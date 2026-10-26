@@ -169,13 +169,13 @@ td:nth-child(2){min-width:170px}
 </figcaption>
 </figure>
 <h2 id="cost-at-1-tb-a-day">Cost at 1 TB a day</h2>
-<p>At 1 TB a day of lake ingestion, the index costs about $1,000 to $1,900 a month. That covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of the range comes from how long notebook 02 runs each hour. The figures use Microsoft’s published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions will be in the GitHub repository.</p>
+<p>At 1 TB a day of lake ingestion, the index costs about $1,000 to $1,900 a month. That covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of the range comes from how long notebook 02 runs each hour. The figures use Microsoft’s published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions are in the project’s <a href="https://github.com/broglock/sentinel-data-lake-normalization">GitHub repository</a>, along with a walkthrough demo of the daily workflow.</p>
 <h2 id="limits">Limits</h2>
 <ul>
 <li>The index covers common hunting fields: IPs, users, hosts, URLs, hashes, results and event types. Fields that only matter to one product stay in the raw table, one pivot away.</li>
 <li>Index freshness follows the job schedule, hourly in this design. Real-time detection stays in the analytics tier.</li>
 <li>Lake KQL jobs have tenant limits on count and concurrency, so sources are batched into shared jobs rather than one job per source.</li>
-<li>The design has been checked offline: the generated KQL parses with Microsoft’s Kusto language library and the notebook logic runs on sample data. Some behaviour still needs confirming in a live lake, including how custom MCP tools reach lake tables and how the job limits apply at scale.</li>
+<li>The design has been deployed and run in a test tenant with the Sentinel data lake onboarded. Behaviour at production volume still needs confirming, including notebook run times and how the job limits apply at 1 TB a day.</li>
 </ul>
 <p>The point of the design is that the cost of normalization is paid once per source, not once per hunt, and that an AI agent gets one consistent set of field names across every log source in the lake.</p>
 

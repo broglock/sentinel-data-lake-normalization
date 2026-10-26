@@ -57,7 +57,11 @@ refs=[("Normalization and the Advanced Security Information Model (ASIM)","https
 ("Jupyter notebooks and the Microsoft Sentinel data lake","https://learn.microsoft.com/azure/sentinel/datalake/notebooks-overview"),
 ("Create and manage Jupyter notebook jobs","https://learn.microsoft.com/azure/sentinel/datalake/notebook-jobs"),
 ("Plan costs and understand Microsoft Sentinel pricing and billing","https://learn.microsoft.com/azure/sentinel/billing")]
-reflis="".join(f'<li style="padding:6px 0;border-bottom:1px solid {RULE};font-size:12.5px;color:{TXT}"><a href="{u}" target="_blank" rel="noopener" style="color:{RED};text-decoration:none">{html.escape(t)}</a><span class="ref-src" style=\'{MONO}font-size:10px;color:{MUTE};margin-left:8px\'>Microsoft Learn</span></li>' for t,u in refs)
+hero=(f'<img class="hero-img" src="{imgmap["_hero"]}" alt="{html.escape(imgmap.get("_hero_alt",""))}" style="width:100%;display:block;margin-bottom:28px;border:1px solid #d6cfc4" width="100%">' if '_hero' in imgmap else '')
+repo=imgmap.get('_repo')
+if repo:
+    refs.append(('Project repository: design, solution kit, cost model and walkthrough demo',repo))
+reflis="".join(f'<li style="padding:6px 0;border-bottom:1px solid {RULE};font-size:12.5px;color:{TXT}"><a href="{u}" target="_blank" rel="noopener" style="color:{RED};text-decoration:none">{html.escape(t)}</a><span class="ref-src" style=\'{MONO}font-size:10px;color:{MUTE};margin-left:8px\'>{"GitHub" if "github" in u else "Microsoft Learn"}</span></li>' for t,u in refs)
 n=len(secs)+1
 refsec=f'''  <section class="section-wrap" style="margin-bottom:52px;position:relative">
     <div class="section-header" style="position:relative;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid {RULE}">
@@ -71,6 +75,7 @@ page=f'''<!-- wp:html -->
 <main class="main" style="padding:8px 0 50px;background:#f5f0e8">
 <div class="content-wrap" style="max-width:1400px;margin:0 auto">
   <div class="intro-wrap" style="border-bottom:1px solid {RULE};padding-bottom:36px;margin-bottom:44px">
+    {hero}
     <h1 class="intro-title" style='{SERIF}font-size:28px;font-weight:700;color:{INK};line-height:1.25;margin-bottom:20px;letter-spacing:-0.3px'>{html.escape(title)}</h1>
     <div class="intro-body">
 {intro}

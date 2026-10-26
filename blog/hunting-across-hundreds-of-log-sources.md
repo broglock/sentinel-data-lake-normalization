@@ -82,7 +82,7 @@ How to read it: the top row runs left to right, then the flow turns down at the 
 
 ## Cost at 1 TB a day
 
-At 1 TB a day of lake ingestion, the index costs about $1,000 to $1,900 a month. That covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of the range comes from how long notebook 02 runs each hour. The figures use Microsoft's published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions will be in the GitHub repository.
+At 1 TB a day of lake ingestion, the index costs about $1,000 to $1,900 a month. That covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of the range comes from how long notebook 02 runs each hour. The figures use Microsoft's published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions are in the project's [GitHub repository](https://github.com/broglock/sentinel-data-lake-normalization), along with a walkthrough demo of the daily workflow.
 
 ## Limits
 
