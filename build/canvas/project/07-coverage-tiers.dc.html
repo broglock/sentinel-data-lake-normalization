@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>07 Coverage tiers and drift</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#001AFF}a:hover{color:#05052F}
+</style>
+</helmet>
+<div style="width: 1080px; height: 1350px; box-sizing: border-box; display: flex; flex-direction: column; background: #FFFFFF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; overflow: hidden">
+<div style="background: #05052F; padding: 40px 56px 36px; display: flex; flex-direction: column; gap: 14px; flex: none">
+<div style="display: flex; align-items: center; gap: 14px"><svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true"><polygon points="8,0 14,0 6,28 0,28" fill="#00AAFF"></polygon><polygon points="20,0 26,0 18,28 12,28" fill="#001AFF"></polygon><polygon points="32,0 38,0 30,28 24,28" fill="#D5FE51"></polygon></svg><span style="color: #CBE9FF; font-size: 14px; letter-spacing: 2px">SENTINEL DATA LAKE NORMALIZATION · 7 OF 10</span></div>
+<h1 style="margin: 0; color: #FFFFFF; font-size: 42px; line-height: 50px; font-weight: 400">Measure coverage for each source</h1>
+<p style="margin: 0; color: #CBE9FF; font-size: 20px; line-height: 28px">Tier every source by how deep a query can see, then watch for formats that change underneath you.</p>
+<div style="width: 96px; height: 6px; background: #CAFF00"></div>
+</div>
+<div style="flex: 1; min-height: 0; padding: 32px 56px 24px; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 16px 20px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: center"><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #001AFF; letter-spacing: 1px">TIER 1</span><span style="font-size: 20px">ASIM-parsed</span></div><div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 12px; background: #F1F1F3; border-radius: 6px"><div style="width: 100%; height: 12px; background: #001AFF; border-radius: 6px"></div></div><div style="font-size: 15px; line-height: 21px; color: #45455C">Full schema: roles, event type and result.</div><div style="display: flex; flex-wrap: wrap; gap: 6px"><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">SrcIpAddr vs DstIpAddr</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">ActorUsername vs TargetUsername</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">EventType</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">EventResult</span></div></div></div>
+<div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 16px 20px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: center"><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #001AFF; letter-spacing: 1px">TIER 2</span><span style="font-size: 20px">Entity only</span></div><div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 12px; background: #F1F1F3; border-radius: 6px"><div style="width: 55%; height: 12px; background: #001AFF; border-radius: 6px"></div></div><div style="font-size: 15px; line-height: 21px; color: #45455C">Entities without roles or outcome.</div><div style="display: flex; flex-wrap: wrap; gap: 6px"><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">IP</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">User</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">Host</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">Hash</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">URL</span></div></div></div>
+<div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 16px 20px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: center"><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #001AFF; letter-spacing: 1px">TIER 3</span><span style="font-size: 20px">Search only</span></div><div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 12px; background: #F1F1F3; border-radius: 6px"><div style="width: 20%; height: 12px; background: #001AFF; border-radius: 6px"></div></div><div style="font-size: 15px; line-height: 21px; color: #45455C">A literal string match, nothing more.</div><div style="display: flex; flex-wrap: wrap; gap: 6px"><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px"><span style="font-family: Consolas, 'Liberation Mono', monospace">where * has</span></span></div></div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #001AFF">Checks on every run</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M3 16 A9 9 0 0 1 21 16"></path><path d="M12 16 L16 9"></path></svg><div style="font-size: 16px">Extraction rate</div><div style="font-size: 14px; line-height: 19px; color: #45455C">Share of rows per table with at least one entity</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg><div style="font-size: 16px">Fill rate per entity</div><div style="font-size: 14px; line-height: 19px; color: #45455C">How often each ASIM column is populated</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><rect x="3" y="4" width="18" height="16" rx="1"></rect><path d="M3 9 H21 M9 9 V20 M15 9 V20"></path></svg><div style="font-size: 16px">Unmapped columns</div><div style="font-size: 14px; line-height: 19px; color: #45455C">High-fill columns the dictionary does not cover</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M3 12 L12 3 H20 V11 L11 20 Z"></path><circle cx="16" cy="7" r="1.5"></circle></svg><div style="font-size: 16px">Template match rate</div><div style="font-size: 14px; line-height: 19px; color: #45455C">Share of syslog lines matching a known template</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><circle cx="10" cy="10" r="6"></circle><path d="M15 15 L21 21"></path></svg><div style="font-size: 16px">Hand-checked sample</div><div style="font-size: 14px; line-height: 19px; color: #45455C">50 to 100 rows per source, reviewed by an analyst</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M9 3 H15 M10 3 V9 L4 19 C3.5 20 4 21 5 21 H19 C20 21 20.5 20 20 19 L14 9 V3"></path></svg><div style="font-size: 16px">Canary events</div><div style="font-size: 14px; line-height: 19px; color: #45455C">Known logon, IP and hash generated on purpose</div></div>
+</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 18px 20px; display: grid; grid-template-columns: 520px minmax(0, 1fr); gap: 24px; align-items: center">
+<div style="position: relative; width: 520px; height: 190px">
+<svg width="520" height="170" viewBox="0 0 520 170" aria-hidden="true" style="position: absolute; left: 0; top: 0"><path d="M 30 10 L 30 150 L 500 150" fill="none" stroke="#05052F" stroke-width="1.5"></path><path d="M 30 46.0 L 500 46.0" fill="none" stroke="#A5A5A5" stroke-width="1.5" stroke-dasharray="5 5"></path><path d="M 30 30.4 L 72 29.1 L 114 31.7 L 156 30.4 L 198 27.8 L 240 30.4 L 282 29.1 L 324 96.7 L 366 98.0 L 408 95.4 L 450 96.7 L 492 98.0" fill="none" stroke="#001AFF" stroke-width="3" stroke-linejoin="round"></path><circle cx="324" cy="96.7" r="8" fill="#CAFF00" stroke="#05052F" stroke-width="2"></circle></svg>
+<div style="position: absolute; left: 30px; top: 160px; width: 300px; font-size: 13px; color: #45455C">Weeks</div>
+<div style="position: absolute; left: 345px; top: 70px; width: 160px; font-size: 13px; color: #45455C">Alert threshold</div>
+<div style="position: absolute; left: 340px; top: 112px; width: 170px; font-size: 13px; color: #05052F">Vendor update lands</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; gap: 10px; align-items: center"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M6 16 V11 A6 6 0 0 1 18 11 V16 L20 18 H4 Z M10 21 H14"></path></svg><span style="font-size: 19px">Drift alert</span></div>
+<div style="font-size: 15px; line-height: 21px; color: #45455C">A parser or mapping that stops matching returns fewer rows, not an error. A drop in extraction rate is usually the first sign that a vendor changed a format.</div>
+<div style="font-size: 13px; color: #45455C">Chart is illustrative.</div>
+</div>
+</div>
+
+</div>
+<div style="flex: none; padding: 14px 56px 18px; border-top: 1px solid #DCDCDD; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 16px; color: #45455C">
+<div style="display: flex; justify-content: space-between; gap: 24px"><span>Sources: LevelBlue design for coverage reporting</span><span style="flex: none">Checked 16 October 2026</span></div>
+<div>© 2026 LevelBlue Intellectual Property. LevelBlue logo, and registered trademarks and service marks are the property of LevelBlue Intellectual Property and/or LevelBlue affiliated companies. All other marks are the property of their respective owners.</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1350}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+var/
+tests/node_modules/
+docs/demo/*.webm

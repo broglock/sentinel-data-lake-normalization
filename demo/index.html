@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lake Hunt: guided walkthrough of daily operations</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16202b;--txt:#3b4754;--mute:#6b7785;--line:#e3e7ec;--accent:#0f6e8c;--accent2:#e6f2f6;--ok:#1f8a4c;--okbg:#e7f5ec;--bad:#c0392b;--badbg:#fbeceb;--warn:#b7791f;--warnbg:#fdf5e6;--code:#0e1621}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button{font:inherit;cursor:pointer}
+code,.mono{font-family:Consolas,"SFMono-Regular",Menlo,monospace;font-size:12.5px}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;height:52px;padding:0 18px;background:var(--ink);color:#fff}
+.logo{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px}
+.logo svg{display:block}
+.top .ws{color:#9fb3c4;font-size:12.5px}
+.top .sp{flex:1}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;letter-spacing:.02em}
+.pill.demo{background:#ffd76a;color:#3a2a00}
+.role{display:flex;gap:2px;background:#26323f;border-radius:7px;padding:2px}
+.role button{border:0;background:transparent;color:#c8d3dd;padding:4px 10px;border-radius:5px;font-size:12.5px}
+.role button.on{background:#fff;color:var(--ink)}
+.tourbtn{border:1px solid #6d8294;background:transparent;color:#fff;border-radius:6px;padding:5px 11px;font-size:12.5px}
+.wrap{display:flex;min-height:calc(100vh - 52px)}
+nav.side{width:200px;flex:none;background:var(--panel);border-right:1px solid var(--line);padding:14px 10px}
+nav.side a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;color:var(--txt);text-decoration:none;margin-bottom:2px;cursor:pointer}
+nav.side a:hover{background:var(--bg)}
+nav.side a.on{background:var(--accent2);color:var(--accent);font-weight:600}
+nav.side .badge{margin-left:auto;background:var(--bad);color:#fff;border-radius:999px;font-size:11px;padding:0 7px}
+nav.side .grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin:16px 10px 6px}
+main{flex:1;padding:22px 28px 140px;max-width:1180px}
+h1{font-size:22px;font-weight:600;color:var(--ink);margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:14px}
+.card h2{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 10px}
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:1fr 1fr}
+.kpi .n{font-size:26px;font-weight:600;color:var(--ink)}
+.kpi .l{color:var(--mute);font-size:12.5px}
+table{border-collapse:collapse;width:100%}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);font-weight:600;text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+td{padding:8px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+tr.click{cursor:pointer}tr.click:hover td{background:#f9fbfc}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:7px;padding:6px 13px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.sm{padding:3px 10px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;letter-spacing:.03em}
+.t-hi{background:var(--okbg);color:var(--ok)}.t-med{background:var(--warnbg);color:var(--warn)}.t-low{background:#eef0f3;color:var(--mute)}
+.t-ok{background:var(--okbg);color:var(--ok)}.t-bad{background:var(--badbg);color:var(--bad)}.t-warn{background:var(--warnbg);color:var(--warn)}.t-info{background:var(--accent2);color:var(--accent)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sp{flex:1}
+.steps{display:flex;gap:4px;margin:0 0 16px}
+.steps div{flex:1;padding:8px 10px;background:#eef1f4;color:var(--mute);font-size:12.5px;border-radius:6px}
+.steps div.on{background:var(--accent);color:#fff}
+.steps div.done{background:var(--accent2);color:var(--accent)}
+.field{border-top:1px solid var(--line);padding:11px 0}
+.field:first-of-type{border-top:0}
+.field .name{min-width:170px;font-weight:600;color:var(--ink)}
+.samples{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.samples code{background:#f1f4f7;border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.choice{border:1px solid var(--line);border-radius:7px;padding:7px 11px;background:#fff;text-align:left;max-width:240px}
+.choice.on{border-color:var(--accent);background:var(--accent2)}
+.choice small{display:block;color:var(--mute)}
+.decided{color:var(--ok);font-weight:600}
+pre{background:var(--code);color:#d7e3ee;border-radius:8px;padding:12px 14px;overflow:auto;font-size:12px;line-height:1.5;margin:0}
+pre .k{color:#7fc7e4}pre .s{color:#e8c37a}pre .c{color:#7d8e9e}pre .a{color:#9fe0a9}pre .d{color:#f29b93}
+.log{background:var(--code);color:#cfe0ec;border-radius:8px;padding:10px 12px;font-family:Consolas,monospace;font-size:12px;height:190px;overflow:auto}
+.log div{white-space:pre-wrap}
+.bar{height:8px;background:#eef1f4;border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .6s}
+.jobs td:nth-child(1){width:34%}
+.lane{position:relative;height:30px;border-bottom:1px dashed var(--line)}
+.lane span{position:absolute;top:7px;height:16px;border-radius:4px;font-size:10.5px;color:#fff;padding:0 5px;line-height:16px;white-space:nowrap;overflow:hidden}
+.check{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.check:first-child{border-top:0}
+.dot{width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#eef1f4;color:var(--mute)}
+.dot.ok{background:var(--ok);color:#fff}.dot.run{background:var(--warn);color:#fff}
+.search{display:flex;gap:8px}
+.search input{flex:1;border:1px solid #c9d2db;border-radius:8px;padding:10px 12px;font-size:15px}
+.try a{color:var(--accent);margin-right:14px;cursor:pointer;font-size:12.5px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.tabs button{border:0;background:none;padding:8px 12px;color:var(--mute);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--accent);border-color:var(--accent);font-weight:600}
+.drawer{position:fixed;top:52px;right:0;bottom:0;width:460px;background:#fff;border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(0,0,0,.08);z-index:30;padding:18px;overflow:auto;transform:translateX(100%);transition:transform .25s}
+.drawer.open{transform:none}
+.finding{border-left:4px solid var(--bad);background:var(--badbg);padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:14px;color:var(--ink)}
+.note{border-left:4px solid var(--accent);background:var(--accent2);padding:9px 13px;border-radius:0 8px 8px 0;margin:10px 0;color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;z-index:60;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+/* tour */
+.tour{position:fixed;right:20px;bottom:20px;width:380px;background:#fff;border:1px solid #c9d2db;border-radius:12px;box-shadow:0 12px 36px rgba(15,30,45,.22);z-index:50;padding:16px 18px}
+.tour .ttl{font-weight:600;color:var(--ink);font-size:15px;margin:2px 0 6px}
+.tour .txt{color:var(--txt);font-size:13.5px}
+.tour .txt p{margin:0 0 8px}
+.tour .meta{font-size:11.5px;color:var(--mute);letter-spacing:.05em;text-transform:uppercase}
+.tour .prog{height:4px;background:#eef1f4;border-radius:3px;margin:10px 0 12px}
+.tour .prog i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.tour.min{width:auto;padding:8px 12px;cursor:pointer}
+.tour.min .body{display:none}
+.tour .mintxt{display:none}
+.tour.min .mintxt{display:block;font-size:13px;color:var(--accent);font-weight:600}
+.hl{outline:3px solid #f0a020!important;outline-offset:3px;border-radius:8px;animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{outline-color:#f0a020}50%{outline-color:rgba(240,160,32,.35)}}
+.svgtl text{font-size:12px;fill:var(--mute)}
+body.touring main{padding-right:420px}
+@media(max-width:1250px){body.touring main{padding-right:28px}}
+@media(max-width:900px){nav.side{display:none}.g3,.g4,.g2{grid-template-columns:1fr}.tour{left:10px;right:10px;width:auto}main{padding:16px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><svg width="26" height="20" viewBox="0 0 26 20" aria-hidden="true"><path d="M1 14c4-4 8 4 12 0s8 4 12 0" fill="none" stroke="#7fc7e4" stroke-width="2.2"/><path d="M1 8c4-4 8 4 12 0s8 4 12 0" fill="none" stroke="#fff" stroke-width="2.2"/></svg>Lake Hunt</div>
+  <span class="ws">demo-workspace · synthetic data</span>
+  <span class="sp"></span>
+  <span class="pill demo">STATIC DEMO</span>
+  <div class="role" id="role"><button data-r="Analyst">Analyst</button><button data-r="Admin">Admin</button></div>
+  <button class="tourbtn" id="restart">Restart walkthrough</button>
+</header>
+<div class="wrap">
+  <nav class="side" id="nav"></nav>
+  <main id="main"></main>
+</div>
+<aside class="drawer" id="drawer"></aside>
+<div class="tour" id="tour"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ------------------------------------------------------------------
+   Lake Hunt static demo. Everything is synthetic and runs in the page.
+   IPs are documentation ranges (192.0.2.0/24, 198.51.100.0/24,
+   203.0.113.0/24) and private 10.x addresses; names use contoso.com.
+------------------------------------------------------------------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const S={screen:"overview",role:"Analyst",nb01:"waiting",nb01log:[],onboard:{step:2,submitted:false},fields:null,approved:false,deployed:false,checks:[0,0,0,0],driftFixed:false,query:"",tab:"where",hunted:null};
+
+/* ---------------- data ---------------- */
+const SOURCES=[
+ {g:"SecurityEvent:Logon",t:"SecurityEvent",layer:"ASIM logic",tier:1,ext:99.8,tm:null,trend:[99.7,99.8,99.8,99.9,99.8,99.8,99.8]},
+ {g:"SigninLogs:Interactive",t:"SigninLogs",layer:"ASIM logic",tier:1,ext:99.9,tm:null,trend:[99.9,99.9,99.9,99.9,99.9,99.9,99.9]},
+ {g:"CEF:Fortinet/FortiGate",t:"CommonSecurityLog",layer:"ASIM logic",tier:1,ext:99.5,tm:null,trend:[99.4,99.5,99.6,99.5,99.5,99.4,99.5]},
+ {g:"CEF:PaloAlto/PAN-OS",t:"CommonSecurityLog",layer:"ASIM logic",tier:1,ext:99.2,tm:null,trend:[99.1,99.2,99.2,99.3,99.2,99.2,99.2]},
+ {g:"Syslog:sshd",t:"Syslog",layer:"Message templates",tier:1,ext:97.9,tm:98.4,trend:[97.6,97.8,98.0,97.9,97.9,98.0,97.9]},
+ {g:"AWSCloudTrail:ConsoleLogin",t:"AWSCloudTrail",layer:"ASIM logic",tier:1,ext:99.6,tm:null,trend:[99.6,99.6,99.7,99.6,99.6,99.6,99.6]},
+ {g:"OktaV2_CL:session",t:"OktaV2_CL",layer:"Registry rules",tier:1,ext:98.8,tm:null,trend:[98.7,98.8,98.9,98.8,98.8,98.7,98.8]},
+ {g:"AppAudit_CL:v2",t:"AppAudit_CL",layer:"Registry rules",tier:1,ext:99.1,tm:null,trend:[99.0,99.1,99.1,99.2,99.1,99.1,99.1]},
+ {g:"VpnAppliance_CL:raw",t:"VpnAppliance_CL",layer:"Message templates",tier:1,ext:63.8,tm:61.2,trend:[96.9,97.1,97.0,96.8,71.4,64.1,63.8],drift:true},
+];
+const BADGE={g:"BadgeReader_CL:raw",t:"BadgeReader_CL",layer:"Value classifier",tier:2,ext:41.0,tm:null,trend:[40.8,41.1,41.0,40.9,41.2,41.0,41.0]};
+const BADGE_SAMPLES=[
+ "BADGE door=HQ-MAIN badge=41207 holder=jsmith@contoso.com result=granted reader=10.40.0.3",
+ "BADGE door=HQ-LAB badge=55120 holder=user19@contoso.com result=granted reader=10.40.0.11",
+ "BADGE door=HQ-DOCK badge=30981 holder=mlopez@contoso.com result=denied reader=10.40.0.17",
+ "BADGE door=HQ-MAIN badge=77314 holder=user06@contoso.com result=granted reader=10.40.0.3"];
+const FIELDS0=[
+ {f:"holder",conf:"hi",why:"Values are all UPNs and the key name means the person using the badge",samples:["jsmith@contoso.com","user19@contoso.com","mlopez@contoso.com","user06@contoso.com"],fill:100,
+  types:["User or account","IP address","Host or device name","Not an entity"],type:"User or account",
+  roles:[["Actor","Who did it","The person who used the badge"],["Target","Account acted on","An account something was done to"],["Unknown","Not sure","Searchable, no role claimed"]],rec:"Actor",asim:"ActorUsername"},
+ {f:"reader",conf:"hi",why:"Every value is an internal IPv4 address and the key name means the reporting device",samples:["10.40.0.3","10.40.0.11","10.40.0.17"],fill:100,
+  types:["IP address","Host or device name","Not an entity"],type:"IP address",
+  roles:[["Dvc","Reporting device","The device that wrote the log"],["Src","Source","Where the traffic came from"],["Unknown","Not sure","Searchable, no role claimed"]],rec:"Dvc",asim:"DvcIpAddr"},
+ {f:"result",conf:"hi",why:"Two values that match the result vocabulary",samples:["granted","denied"],fill:100,result:true,
+  map:{granted:"Success",denied:"Failure"},asim:"EventResult"},
+ {f:"door",conf:"med",why:"Short names that look like locations or devices, not hostnames seen elsewhere",samples:["HQ-MAIN","HQ-LAB","HQ-DOCK"],fill:100,
+  types:["Host or device name","Not an entity"],type:"Host or device name",
+  roles:[["Dvc","Reporting device","Name of the door controller"],["Unknown","Not sure","Searchable, no role claimed"]],rec:"Dvc",asim:"DvcHostname"},
+ {f:"badge",conf:"low",why:"Five-digit numbers with no match to any entity type",samples:["41207","55120","30981","77314"],fill:100,
+  types:["Not an entity","User or account"],type:"Not an entity",roles:[],rec:null,asim:null},
+];
+const HUNT_IP=[
+ ["2026-10-22 09:13:40","CEF:Fortinet/FortiGate","FortiGate","Src","Failure","deny tcp 203.0.113.45:51022 -> 10.20.30.5:443",1,"ASIM logic"],
+ ["2026-10-22 09:14:02","SecurityEvent:Logon","Windows sign-in","Src","Failure","4625 jsmith from 203.0.113.45 (0xc000006a)",1,"ASIM logic"],
+ ["2026-10-22 09:14:22","SigninLogs:Interactive","Entra ID","Src","Failure","user03@contoso.com 50126",1,"ASIM logic"],
+ ["2026-10-22 09:14:31","SigninLogs:Interactive","Entra ID","Src","Failure","user11@contoso.com 50126",1,"ASIM logic"],
+ ["2026-10-22 09:14:40","SigninLogs:Interactive","Entra ID","Src","Failure","akumar@contoso.com 50126",1,"ASIM logic"],
+ ["2026-10-22 09:14:49","SigninLogs:Interactive","Entra ID","Src","Failure","mlopez@contoso.com 50126",1,"ASIM logic"],
+ ["2026-10-22 09:14:58","SigninLogs:Interactive","Entra ID","Src","Failure","jsmith@contoso.com 50126",1,"ASIM logic"],
+ ["2026-10-22 09:14:35","Syslog:sshd","Linux sshd","Src","Failure","Failed password for root from 203.0.113.45 port 52114 ssh2",1,"Message templates"],
+ ["2026-10-22 09:14:41","Syslog:sshd","Linux sshd","Src","Failure","Failed password for jsmith from 203.0.113.45 port 52115 ssh2",1,"Message templates"],
+ ["2026-10-22 09:15:10","CEF:PaloAlto/PAN-OS","Palo Alto","Src","Failure","deny 203.0.113.45 -> 10.20.31.8 ssl",1,"ASIM logic"],
+ ["2026-10-22 09:15:40","OktaV2_CL:session","Okta","Src","Failure","user.session.start FAILURE jsmith@contoso.com",1,"Registry rules"],
+ ["2026-10-22 09:16:05","AppAudit_CL:v2","Expenses app","Src","Failure","login_failed jsmith",1,"Registry rules"],
+ ["2026-10-22 09:16:30","VpnAppliance_CL:raw","VPN appliance","Src","Failure","user=jsmith src=203.0.113.45 action=reject reason=badpw",1,"Message templates"],
+ ["2026-10-22 09:20:06","SigninLogs:Interactive","Entra ID","Src","Success","jsmith@contoso.com 0 (Azure Portal)",1,"ASIM logic"],
+ ["2026-10-22 09:35:10","AWSCloudTrail:ConsoleLogin","AWS","Src","Success","ConsoleLogin jsmith Success",1,"ASIM logic"],
+ ["2026-10-22 09:37:50","AWSCloudTrail:API","AWS","Src","None","ListBuckets by jsmith",1,"ASIM logic"],
+];
+const HUNT_USER_BASE=[
+ ["2026-10-22 09:14:02","SecurityEvent:Logon","Windows sign-in","Target","Failure","from 203.0.113.45",1,"ASIM logic"],
+ ["2026-10-22 09:14:58","SigninLogs:Interactive","Entra ID","Target","Failure","from 203.0.113.45",1,"ASIM logic"],
+ ["2026-10-22 09:16:30","VpnAppliance_CL:raw","VPN appliance","Target","Failure","from 203.0.113.45",1,"Message templates"],
+ ["2026-10-22 09:20:06","SigninLogs:Interactive","Entra ID","Target","Success","from 203.0.113.45, location XX",1,"ASIM logic"],
+ ["2026-10-22 09:31:40","SecurityEvent:Logon","Windows sign-in","Target","Success","interactive on WS-0412 (10.20.30.40)",1,"ASIM logic"],
+ ["2026-10-22 09:35:10","AWSCloudTrail:ConsoleLogin","AWS","Actor","Success","from 203.0.113.45",1,"ASIM logic"],
+ ["2026-10-22 10:02:44","CEF:Fortinet/FortiGate","FortiGate","Src (via WS-0412)","Success","allow 10.20.30.40 -> 198.51.100.7:443, 1.8 GB out",1,"ASIM logic"],
+];
+const HUNT_USER_BADGE=["2026-10-22 09:08:41","BadgeReader_CL:raw","Badge reader","Actor","Success","door HQ-MAIN, reader 10.40.0.3",1,"Registry rules"];
+const RAW={
+ "Entra ID":{table:"SigninLogs",row:{TimeGenerated:"2026-10-22T09:20:06Z",UserPrincipalName:"jsmith@contoso.com",IPAddress:"203.0.113.45",AppDisplayName:"Azure Portal",ResultType:"0",Location:"XX",ClientAppUsed:"Browser"}},
+ "Linux sshd":{table:"Syslog",row:{TimeGenerated:"2026-10-22T09:14:41Z",HostName:"web-07",ProcessName:"sshd",Facility:"auth",SyslogMessage:"Failed password for jsmith from 203.0.113.45 port 52115 ssh2"}},
+ "VPN appliance":{table:"VpnAppliance_CL",row:{TimeGenerated:"2026-10-22T09:16:30Z",RawData:"2026-10-22T09:16:30Z vpn01 auth user=jsmith src=203.0.113.45 action=reject reason=badpw"}},
+ "Badge reader":{table:"BadgeReader_CL",row:{TimeGenerated:"2026-10-22T09:08:41Z",RawData:BADGE_SAMPLES[0]}},
+ "AWS":{table:"AWSCloudTrail",row:{TimeGenerated:"2026-10-22T09:35:10Z",EventName:"ConsoleLogin",UserIdentityUserName:"jsmith",SourceIpAddress:"203.0.113.45",ResponseElements:'{"ConsoleLogin":"Success"}'}},
+ "FortiGate":{table:"CommonSecurityLog",row:{TimeGenerated:"2026-10-22T10:02:44Z",DeviceVendor:"Fortinet",DeviceProduct:"Fortigate",SourceIP:"10.20.30.40",DestinationIP:"198.51.100.7",DeviceAction:"accept",SentBytes:1932735283}},
+};
+
+/* ---------------- helpers ---------------- */
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2600)}
+function go(screen){S.screen=screen;closeDrawer();render()}
+function setRole(r){S.role=r;render()}
+function tag(cls,txt){return `<span class="tag ${cls}">${esc(txt)}</span>`}
+function resTag(r){return r==="Success"?tag("t-ok","Success"):r==="Failure"?tag("t-bad","Failure"):tag("t-low","No result")}
+function spark(v,bad){const w=110,h=26,mn=Math.min(...v,60),mx=100;const p=v.map((x,i)=>`${(i*(w-4)/(v.length-1)+2).toFixed(1)},${(h-2-(x-mn)/(mx-mn)*(h-4)).toFixed(1)}`).join(" ");return `<svg width="${w}" height="${h}"><polyline points="${p}" fill="none" stroke="${bad?"#c0392b":"#0f6e8c"}" stroke-width="2"/></svg>`}
+function allSources(){const s=SOURCES.map(x=>x.g==="VpnAppliance_CL:raw"&&S.driftFixed?{...x,ext:97.2,tm:96.8,trend:[...x.trend.slice(0,6),97.2],drift:false}:x);return S.deployed?[...s,{...BADGE,layer:"Registry rules",tier:1,ext:99.6,trend:[41,41,41,41,41,41,99.6]}]:[...s,BADGE]}
+function attention(){const a=[];if(!S.deployed)a.push({k:"new",txt:"New table BadgeReader_CL: 5 fields proposed by notebook 01",act:"Review fields",go:"onboard"});
+ if(S.onboard.submitted&&!S.approved)a.push({k:"appr",txt:"Change waiting for approval: onboard BadgeReader_CL",act:"Open approvals",go:"approve"});
+ if(S.approved&&!S.deployed)a.push({k:"dep",txt:"Approved change not deployed yet: BadgeReader_CL",act:"Deploy",go:"onboard"});
+ if(!S.driftFixed)a.push({k:"drift",txt:"Drift: VpnAppliance_CL:raw extraction fell from 97% to 64% on 2026-10-24",act:"Investigate",go:"drift"});return a}
+
+/* ---------------- nav ---------------- */
+function renderNav(){const n=attention().length;const it=[["overview","Daily schedule"],["home","Home",n],["onboard","Onboard a source"],["approve","Review and approve",S.onboard.submitted&&!S.approved?1:0],["hunt","Hunt"],["coverage","Coverage and drift"]];
+ $("#nav").innerHTML=`<div class="grp">Operations</div>`+it.map(([k,l,b])=>`<a data-go="${k}" class="${S.screen===k||(k==="coverage"&&S.screen==="drift")?"on":""}">${l}${b?`<span class="badge">${b}</span>`:""}</a>`).join("")+
+ `<div class="grp">About</div><a data-go="about" class="${S.screen==="about"?"on":""}">How this works</a>`;
+ document.querySelectorAll("#role button").forEach(b=>b.classList.toggle("on",b.dataset.r===S.role))}
+
+/* ---------------- screens ---------------- */
+const V={};
+V.overview=()=>{const lane=(label,blocks)=>`<tr><td>${label}</td><td><div class="lane">${blocks.map(b=>`<span style="left:${b[0]/24*100}%;width:${Math.max(b[1]/24*100,1.2)}%;background:${b[2]}" title="${esc(b[3]||"")}">${esc(b[3]||"")}</span>`).join("")}</div></td></tr>`;
+ const hourly=(c)=>Array.from({length:24},(_,h)=>[h+.25,.35,c,""]);
+ const st=S.nb01;
+ return `<h1>Daily schedule</h1><p class="sub">Everything below runs inside the Sentinel data lake on a schedule. Nobody starts these jobs by hand.</p>
+ <div class="card" id="sched"><h2>Jobs over 24 hours (UTC)</h2>
+ <table class="jobs"><tbody>
+ ${lane("Notebook 01 · inventory and template mining · daily",[[2,.6,"#6a4fb3",""]])}
+ ${lane("KQL jobs · ASIM logic and registry rules · hourly",hourly("#0f6e8c"))}
+ ${lane("Notebook 02 · templates and classifier · hourly",hourly("#2f8f6a"))}
+ ${lane("Notebook 03 · coverage and drift · daily",[[4,.4,"#b7791f",""]])}
+ </tbody></table>
+ <div class="row" style="justify-content:space-between;color:var(--mute);font-size:11.5px;margin-top:4px;padding-left:34%"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div></div>
+ <div class="grid g2">
+ <div class="card" id="nb01"><div class="row"><h2 style="margin:0">Notebook 01, today 02:00</h2><span class="sp"></span>${st==="done"?tag("t-ok","Completed"):st==="running"?tag("t-warn","Running"):tag("t-low","Scheduled")}</div>
+ <p style="margin:8px 0">Scans every lake table, profiles each field and proposes mappings for anything new or changed. Proposals wait for a person.</p>
+ <div class="bar"><i id="nb01bar" style="width:${st==="done"?100:st==="running"?50:0}%"></i></div>
+ <div class="row" style="margin-top:10px"><button class="btn pri" id="runnb01" ${st!=="waiting"?"disabled":""}>Run now (simulate 02:00)</button></div></div>
+ <div class="card"><h2>Run log</h2><div class="log" id="log">${S.nb01log.map(l=>`<div>${esc(l)}</div>`).join("")||'<div style="color:#7d8e9e">Waiting for the 02:00 run.</div>'}</div></div></div>
+ ${st==="done"?`<div class="card" id="nb01result"><h2>What the run produced</h2><table><thead><tr><th>Finding</th><th>Table</th><th>Proposed</th><th></th></tr></thead><tbody>
+ <tr><td>${tag("t-info","New table")}</td><td class="mono">BadgeReader_CL</td><td>5 fields: holder, reader, result, door, badge</td><td><button class="btn sm" data-go="onboard">Review</button></td></tr>
+ <tr><td>${tag("t-warn","Format change")}</td><td class="mono">VpnAppliance_CL</td><td>1 new message template (firmware 9.2 format)</td><td><button class="btn sm" data-go="drift">Review</button></td></tr>
+ <tr><td>${tag("t-low","No change")}</td><td>8 other source groups</td><td>none</td><td></td></tr></tbody></table></div>`:""}`};
+
+V.home=()=>{const a=attention();const src=allSources();
+ return `<h1>Home</h1><p class="sub">Monday 2026-10-26, 07:45. Notebook 01 finished at 02:07, notebook 03 at 04:03.</p>
+ <div class="grid g4">
+ <div class="card kpi"><div class="n">${src.length}</div><div class="l">source groups indexed</div></div>
+ <div class="card kpi"><div class="n">${src.filter(s=>s.tier===1).length}</div><div class="l">at Tier 1 (role and result known)</div></div>
+ <div class="card kpi"><div class="n">${src.filter(s=>s.ext<90).length}</div><div class="l">below the 90% extraction target</div></div>
+ <div class="card kpi"><div class="n">412 M</div><div class="l">index rows, last 7 days</div></div></div>
+ <div class="card" id="attn"><h2>Needs attention</h2>${a.length?`<table><tbody>${a.map(x=>`<tr><td style="width:110px">${x.k==="drift"?tag("t-warn","Drift"):x.k==="new"?tag("t-info","New source"):tag("t-info","Workflow")}</td><td>${esc(x.txt)}</td><td style="text-align:right"><button class="btn sm pri" data-go="${x.go}">${x.act}</button></td></tr>`).join("")}</tbody></table>`:'<p>Nothing waiting. All sources are above target.</p>'}</div>
+ <div class="grid g2"><div class="card"><h2>Hunt</h2><p>Search one value across every indexed source.</p><button class="btn" data-go="hunt">Open Hunt</button></div>
+ <div class="card"><h2>Coverage</h2><p>Extraction rate and drift for every source group.</p><button class="btn" data-go="coverage">Open Coverage</button></div></div>`};
+
+function stepsBar(cur){const n=["Pick source","Decide fields","Preview","Submit","Approve","Deploy","Validate"];return `<div class="steps">${n.map((x,i)=>`<div class="${i+1===cur?"on":i+1<cur?"done":""}">${i+1} ${x}</div>`).join("")}</div>`}
+function onboardStep(){if(S.deployed)return 7;if(S.approved)return 6;if(S.onboard.submitted)return 5;return S.onboard.step}
+V.onboard=()=>{const st=onboardStep();if(!S.fields)S.fields=FIELDS0.map(f=>({...f,dec:null,role:f.rec,typ:f.type,open:false}));
+ const head=`<h1>BadgeReader_CL</h1><p class="sub">Physical access logs, raw text. Found by notebook 01 on 2026-10-26 02:04. Today it is searchable only through the value classifier (Tier 2).</p>${stepsBar(st)}`;
+ if(st===2)return head+fieldsView();
+ if(st===3)return head+previewView();
+ if(st===4)return head+submitView();
+ if(st===5)return head+`<div class="card"><h2>Waiting for approval</h2><p>Submitted by the analyst. An admin must approve the change before anything is generated or deployed.</p>${S.role==="Admin"?'<button class="btn pri" data-go="approve">Open approvals</button>':'<p class="note">Switch the role to <b>Admin</b> in the top bar to approve.</p>'}</div>`;
+ if(st===6)return head+deployView();
+ return head+validateView()};
+function fieldsView(){const F=S.fields,done=F.filter(f=>f.dec).length;
+ const grp=(c,t)=>{const fs=F.filter(f=>f.conf===c);if(!fs.length)return"";return `<div class="card" id="fg-${c}"><div class="row"><h2 style="margin:0">${t} <span style="color:var(--mute);font-weight:400">${fs.length}</span></h2><span class="sp"></span>${c==="hi"?`<button class="btn ok sm" id="accepthi" ${fs.every(f=>f.dec)?"disabled":""}>Accept all ${fs.length} high-confidence</button>`:""}</div>${fs.map(fieldRow).join("")}</div>`};
+ return `<div class="card"><div class="row"><b>Kind of source</b><select id="kind" class="btn"><option>Physical access</option><option>Sign-in log</option><option>Firewall</option><option>Audit</option><option>Other</option></select><span style="color:var(--mute)">Sets defaults: in a physical access log the badge holder is the actor.</span></div>
+ <div style="margin-top:10px"><b>Sample rows</b><pre style="margin-top:6px">${BADGE_SAMPLES.map(esc).join("\n")}</pre></div></div>
+ ${grp("hi","High confidence")}${grp("med","Needs a decision")}${grp("low","Low confidence")}
+ <div class="card row" id="fieldsfoot"><span>${done} of ${F.length} decided</span><div class="bar" style="flex:1"><i style="width:${done/F.length*100}%"></i></div><button class="btn pri" id="topreview" ${done<F.length?"disabled":""}>Next: Preview</button></div>`}
+function fieldRow(f){const i=S.fields.indexOf(f);const conf={hi:tag("t-hi","HIGH CONFIDENCE"),med:tag("t-med","MEDIUM"),low:tag("t-low","LOW")}[f.conf];
+ let decided="";if(f.dec){decided=f.result?`<span class="decided">Result: granted → Success, denied → Failure</span>`:f.typ==="Not an entity"?`<span class="decided">Skipped (kept in raw row)</span>`:`<span class="decided">${esc(f.typ)} · ${esc(f.role)} → <code>${esc(roleAsim(f))}</code></span>`}
+ let body="";if(f.open&&!f.result){body=`<div class="card" style="background:#f9fbfc;margin-top:8px"><div class="samples">${f.samples.map(s=>`<code>${esc(s)}</code>`).join("")}</div><div style="color:var(--mute);font-size:12.5px">${f.fill}% filled</div>
+ <div style="margin-top:8px"><b>What is in this field?</b></div><div class="choices">${f.types.map(t=>`<button class="choice ${f.typ===t?"on":""}" data-typ="${i}|${esc(t)}">${esc(t)}${t===f.type?"<small>Recommended</small>":""}</button>`).join("")}</div>
+ ${f.typ!=="Not an entity"&&f.roles.length?`<div style="margin-top:10px"><b>What role does it play in the event?</b></div><div class="choices">${f.roles.map(r=>`<button class="choice ${f.role===r[0]?"on":""}" data-role="${i}|${r[0]}"><b>${esc(r[1])}</b><small>${esc(r[2])}${r[0]===f.rec?" · Recommended":""}</small></button>`).join("")}</div>`:""}
+ <p style="margin:10px 0 6px;color:var(--mute)">Indexed as <code>${esc(roleAsim(f)||"not indexed")}</code></p><button class="btn pri sm" data-use="${i}">Use this</button></div>`}
+ if(f.open&&f.result){body=`<div class="card" style="background:#f9fbfc;margin-top:8px"><table><thead><tr><th>Value</th><th>Share</th><th>Maps to</th></tr></thead><tbody><tr><td><code>granted</code></td><td>95%</td><td>${tag("t-ok","Success")}</td></tr><tr><td><code>denied</code></td><td>5%</td><td>${tag("t-bad","Failure")}</td></tr></tbody></table><button class="btn pri sm" style="margin-top:8px" data-use="${i}">Use this</button></div>`}
+ return `<div class="field" id="field-${f.f}"><div class="row"><span class="name mono">RawData.${esc(f.f)}</span>${conf}<span>${esc(f.why)}</span><span class="sp"></span>${decided||`<button class="btn sm pri" data-acc="${i}">Accept</button><button class="btn sm" data-open="${i}">${f.open?"Close":"Change"}</button>`}</div>${body}</div>`}
+function roleAsim(f){if(f.result)return"EventResult";if(f.typ==="Not an entity")return"";const m={"User or account":{Actor:"ActorUsername",Target:"TargetUsername",Unknown:"user:Unknown"},"IP address":{Dvc:"DvcIpAddr",Src:"SrcIpAddr",Unknown:"ip:Unknown"},"Host or device name":{Dvc:"DvcHostname",Unknown:"host:Unknown"}};return (m[f.typ]||{})[f.role]||"" }
+function previewView(){return `<div class="grid g3"><div class="card kpi"><div class="n">99.6%</div><div class="l">rows with at least one entity extracted (target 90%)</div></div><div class="card kpi"><div class="n">100%</div><div class="l">rows with a result (granted or denied)</div></div><div class="card kpi"><div class="n">3</div><div class="l">entities per row: user Actor, IP Dvc, host Dvc</div></div></div>
+ <div class="card" id="pv"><h2>One raw row and the index rows it produces</h2><pre>${esc(BADGE_SAMPLES[0])}</pre>
+ <table style="margin-top:10px"><thead><tr><th>EntityType</th><th>Role</th><th>ValueNorm</th><th>Layer</th><th>Tier</th></tr></thead><tbody>
+ <tr><td>user</td><td>Actor</td><td class="mono">jsmith@contoso.com</td><td>registry</td><td>1</td></tr>
+ <tr><td>ip</td><td>Dvc</td><td class="mono">10.40.0.3</td><td>registry</td><td>1</td></tr>
+ <tr><td>host</td><td>Dvc</td><td class="mono">hq-main</td><td>registry</td><td>1</td></tr></tbody></table>
+ <p class="note">Before this mapping the same row produced two Tier 2 rows (an email and an IP with role Unknown), and no result.</p></div>
+ <div class="card row"><button class="btn" id="backfields">Back</button><span class="sp"></span><button class="btn pri" id="tosubmit">Next: Submit</button></div>`}
+function submitView(){return `<div class="card"><h2>Registry entry</h2><pre>${yaml()}</pre></div>
+ <div class="card row" id="submitbar"><span>Submitting creates a change request. An admin approves it before any job changes.</span><span class="sp"></span><button class="btn pri" id="dosubmit">Submit for approval</button></div>`}
+function yaml(){return `<span class="k">- group:</span> <span class="s">BadgeReader_CL:raw</span>
+  <span class="k">table:</span> BadgeReader_CL
+  <span class="k">match:</span> <span class="s">RawData startswith "BADGE "</span>
+  <span class="k">engine:</span> kql            <span class="c"># key=value text, one format, high volume</span>
+  <span class="k">source_kind:</span> physical_access
+  <span class="k">event:</span> { <span class="k">schema:</span> Authentication, <span class="k">type:</span> Logon, <span class="k">vendor:</span> Generic, <span class="k">product:</span> BadgeReader }
+  <span class="k">fields:</span>
+    <span class="k">holder:</span> { <span class="k">entity:</span> user, <span class="k">role:</span> Actor, <span class="k">asim:</span> ActorUsername }
+    <span class="k">reader:</span> { <span class="k">entity:</span> ip,   <span class="k">role:</span> Dvc,   <span class="k">asim:</span> DvcIpAddr }
+    <span class="k">door:</span>   { <span class="k">entity:</span> host, <span class="k">role:</span> Dvc,   <span class="k">asim:</span> DvcHostname }
+  <span class="k">result:</span> { <span class="k">field:</span> result, <span class="k">map:</span> { granted: Success, denied: Failure } }
+  <span class="k">record_key:</span> [TimeGenerated, RawData]
+  <span class="k">reviewed_by:</span> analyst@contoso.com</span>`}
+function kql(){return `<span class="c">// HuntEntity job for BadgeReader_CL:raw. Generated from the registry. Hourly, start minute :17.</span>
+<span class="k">let</span> start = startofhour(now(-75m)); <span class="k">let</span> stop = startofhour(now(-15m));
+BadgeReader_CL
+| <span class="k">where</span> TimeGenerated between (start .. stop) <span class="k">and</span> RawData startswith <span class="s">"BADGE "</span>
+| <span class="k">extend</span> kv = parse_kv(RawData, <span class="k">typeof</span>(holder:string, reader:string, door:string, result:string), pair_delimiter=<span class="s">" "</span>, kv_delimiter=<span class="s">"="</span>)
+| <span class="k">extend</span> EventResult = case(kv.result == <span class="s">"granted"</span>, <span class="s">"Success"</span>, kv.result == <span class="s">"denied"</span>, <span class="s">"Failure"</span>, <span class="s">"NA"</span>),
+         SourceRecordKey = hash_sha256(strcat(<span class="k">tostring</span>(TimeGenerated), <span class="s">"|"</span>, RawData))
+| <span class="k">mv-expand</span> e = pack_array(
+      bag_pack(<span class="s">"EntityType"</span>,<span class="s">"user"</span>,<span class="s">"Role"</span>,<span class="s">"Actor"</span>,<span class="s">"Value"</span>,<span class="k">tostring</span>(kv.holder)),
+      bag_pack(<span class="s">"EntityType"</span>,<span class="s">"ip"</span>,  <span class="s">"Role"</span>,<span class="s">"Dvc"</span>,  <span class="s">"Value"</span>,<span class="k">tostring</span>(kv.reader)),
+      bag_pack(<span class="s">"EntityType"</span>,<span class="s">"host"</span>,<span class="s">"Role"</span>,<span class="s">"Dvc"</span>,  <span class="s">"Value"</span>,<span class="k">tostring</span>(kv.door)))
+| <span class="k">where</span> isnotempty(e.Value)
+| <span class="k">summarize</span> Count = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated),
+            SampleKeys = make_set(SourceRecordKey, 3)
+    <span class="k">by</span> Hour = bin(TimeGenerated, 1h), EntityType = <span class="k">tostring</span>(e.EntityType), Role = <span class="k">tostring</span>(e.Role),
+       ValueNorm = tolower(<span class="k">tostring</span>(e.Value)), EventResult
+| <span class="k">extend</span> SourceTable = <span class="s">"BadgeReader_CL"</span>, SourceGroup = <span class="s">"BadgeReader_CL:raw"</span>, MappingLayer = <span class="s">"registry"</span>, MappingTier = 1`}
+function deployView(){return `<div class="card"><h2>Generated lake job</h2><p>The registry generates the job query. Lake KQL jobs have no public create API, so the operator creates the job once in the Defender portal from this query, or adds it to an existing shared job.</p><pre>${kql()}</pre></div>
+ <div class="card" id="deploycard"><h2>Deploy steps</h2><ol style="margin:0 0 10px;padding-left:20px"><li>Defender portal: Microsoft Sentinel, Data lake exploration, Jobs, Create job.</li><li>Paste the query, destination <code>HuntEntity_KQL</code>, append, hourly at minute 17.</li><li>Return here and mark it deployed. Validation starts on the next run.</li></ol>
+ ${S.role==="Admin"?'<button class="btn pri" id="dodeploy">Mark as deployed</button>':'<p class="note">Deploying needs the <b>Admin</b> role.</p>'}</div>`}
+function validateView(){const C=[["Coverage numbers","Notebook 03: extraction 99.6%, result 100%, unknown roles 0%. Target is 90%.",false],["Hand check of sample rows","Five raw rows next to their index rows. A person confirms they match.",true],["Canary event found by the agent","A test badge event for canary@contoso.com is written, then found with hunt_value through the data lake MCP.",false],["Pivot back to the raw row","SampleKeys on the index row resolve to the original BadgeReader_CL row.",false]];
+ const all=S.checks.every(c=>c===2);
+ return `<div class="card" id="checks"><h2>Validation, first 24 hours</h2>${C.map((c,i)=>`<div class="check"><div class="dot ${S.checks[i]===2?"ok":S.checks[i]===1?"run":""}">${S.checks[i]===2?"✓":i+1}</div><div style="flex:1"><b>${c[0]}</b><div style="color:var(--mute)">${c[1]}</div></div>${S.checks[i]===2?tag("t-ok","Passed"):c[2]&&S.checks[i]===1?'<button class="btn sm ok" id="handok">Rows match</button>':S.checks[i]===1?tag("t-warn","Running"):tag("t-low","Waiting")}</div>`).join("")}
+ <div class="row" style="margin-top:10px">${S.checks[0]===0?'<button class="btn pri" id="runchecks">Run checks</button>':""}${all?tag("t-ok","BadgeReader_CL is live at Tier 1, watched for drift by notebook 03"):""}</div></div>
+ ${all?'<div class="card row"><span>The new source is now part of every hunt.</span><span class="sp"></span><button class="btn pri" data-go="hunt">Go to Hunt</button></div>':""}`}
+
+V.approve=()=>{if(!S.onboard.submitted||S.approved)return `<h1>Review and approve</h1><p class="sub">Changes waiting for an admin.</p><div class="card"><p>${S.approved?"Nothing waiting. Change #14 was approved.":"Nothing waiting."}</p></div>`;
+ return `<h1>Review and approve</h1><p class="sub">Changes waiting for an admin. Agents can draft and submit changes; only a person approves them.</p>
+ <div class="card" id="apprcard"><div class="row"><h2 style="margin:0">#14 Onboard BadgeReader_CL</h2><span class="sp"></span>${tag("t-info","Submitted by analyst")}</div>
+ <p>Maps three fields to entities (the badge holder as the actor, the reader IP and door as the reporting device) and maps <code>granted</code> and <code>denied</code> to Success and Failure. Moves the source from Tier 2 to Tier 1.</p>
+ <div class="grid g3"><div class="kpi"><div class="n">99.6%</div><div class="l">extraction on 2,412 sample rows</div></div><div class="kpi"><div class="n">+0</div><div class="l">new tables or DCRs</div></div><div class="kpi"><div class="n">1</div><div class="l">lake job added (hourly)</div></div></div>
+ <details style="margin:10px 0"><summary>Registry entry</summary><pre style="margin-top:8px">${yaml()}</pre></details>
+ ${S.role==="Admin"?'<div class="row"><button class="btn ok" id="doapprove">Approve</button><button class="btn" id="doreject">Reject with reason</button></div>':'<p class="note">Only an Admin can approve. Switch the role in the top bar.</p>'}</div>`};
+
+V.coverage=()=>{const src=allSources();return `<h1>Coverage and drift</h1><p class="sub">Written daily by notebook 03. Extraction rate is the share of rows with at least one entity; the target is 90%.</p>
+ <div class="card" id="covtable"><table><thead><tr><th>Source group</th><th>Mapped by</th><th>Tier</th><th>Extraction</th><th>Last 7 days</th><th>Status</th></tr></thead><tbody>
+ ${src.map(s=>`<tr class="${s.drift?"click":""}" ${s.drift?'data-go="drift"':""}><td class="mono">${esc(s.g)}</td><td>${esc(s.layer)}</td><td>${s.tier}</td><td>${s.ext.toFixed(1)}%</td><td>${spark(s.trend,s.ext<90)}</td><td>${s.drift?tag("t-warn","Drift"):s.ext<90?tag("t-low","Tier 2, not reviewed"):tag("t-ok","OK")}</td></tr>`).join("")}</tbody></table></div>`};
+V.drift=()=>{const fixed=S.driftFixed;return `<h1>VpnAppliance_CL:raw</h1><p class="sub">Extraction fell from 97% to 64% on 2026-10-24. Notebook 03 flagged it; notebook 01 mined the lines that no template matches.</p>
+ <div class="grid g2"><div class="card"><h2>Unmatched lines, sample</h2><pre>2026-10-24T08:02:11Z vpn01 fw=9.2 evt=auth usr="jsmith" ip=203.0.113.45 act=deny why=badpw
+2026-10-24T08:05:40Z vpn01 fw=9.2 evt=auth usr="user22" ip=198.51.100.31 act=allow why=ok
+2026-10-24T08:06:02Z vpn02 fw=9.2 evt=auth usr="akumar" ip=192.0.2.17 act=allow why=ok</pre>
+ <p class="note">The vendor's firmware 9.2 renamed the keys (<code>user</code> to <code>usr</code>, <code>src</code> to <code>ip</code>, <code>action</code> to <code>act</code>). The old template no longer matches, so these rows fell back to the classifier.</p></div>
+ <div class="card" id="newtpl"><h2>Proposed template</h2><pre>vpn&lt;*&gt; fw=9.2 evt=auth usr="<span class="a">&lt;user&gt;</span>" ip=<span class="a">&lt;ip&gt;</span> act=<span class="a">&lt;result&gt;</span> why=&lt;*&gt;</pre>
+ <table style="margin-top:10px"><tbody><tr><td>usr</td><td>user · Target → <code>TargetUsername</code></td></tr><tr><td>ip</td><td>IP · Source → <code>SrcIpAddr</code></td></tr><tr><td>act</td><td>allow → Success, deny → Failure</td></tr></tbody></table>
+ <p>Matches 33.4% of yesterday's rows. Projected extraction: <b>97.2%</b>.</p>
+ ${fixed?tag("t-ok","Template added, approved and deployed. Extraction back to 97.2%"):'<button class="btn pri" id="fixdrift">Accept template and submit</button>'}</div></div>`};
+
+V.hunt=()=>{const q=S.query,r=S.hunted;
+ return `<h1>Hunt</h1><p class="sub">One value across every indexed source, back to the original log line.</p>
+ <div class="card" id="huntbox"><div class="search"><input id="q" value="${esc(q)}" placeholder="IP, user in any format, host, URL or hash"><select class="btn"><option>7 days</option><option>30 days</option><option>365 days</option></select><button class="btn pri" id="dohunt">Hunt</button></div>
+ <div class="try" style="margin-top:8px"><span style="color:var(--mute);margin-right:8px">Try:</span><a data-q="203.0.113.45">203.0.113.45</a><a data-q="CONTOSO\\jsmith">CONTOSO\\jsmith</a><a data-q="198.51.100.7">198.51.100.7</a></div></div>
+ ${r?huntResults(r):""}`};
+function huntRows(q){const n=q.toLowerCase();if(n.includes("203.0.113.45"))return HUNT_IP;if(n.includes("jsmith"))return S.deployed?[HUNT_USER_BADGE,...HUNT_USER_BASE]:HUNT_USER_BASE;if(n.includes("198.51.100.7"))return [HUNT_USER_BASE[6]];return[]}
+function huntResults(rows){if(!rows.length)return `<div class="card"><p>No matches in the index for this value.</p></div>`;
+ const srcs=[...new Set(rows.map(r=>r[1]))],f=rows.filter(r=>r[4]==="Failure").length,s=rows.filter(r=>r[4]==="Success").length;
+ const isUser=S.query.toLowerCase().includes("jsmith");
+ let finding="";if(isUser&&S.deployed)finding=`<div class="finding" id="finding"><b>Badge-in at 09:08 from HQ-MAIN, then a "remote" sign-in from 203.0.113.45 at 09:20.</b> jsmith was in the office when the Entra ID sign-in succeeded from an external address. The interactive logon on WS-0412 at 09:31 and the 1.8 GB upload to 198.51.100.7 at 10:02 follow from the same account.</div>`;
+ else if(isUser)finding=`<div class="note">BadgeReader_CL is not mapped yet, so the badge reader shows up only as a Tier 2 email match with no role or result.</div>`;
+ return `${finding}<div class="card" id="summary"><div class="row"><span style="font-size:15px">Seen in <b>${srcs.length}</b> source groups · <b>${rows.length}</b> events · <b>${f}</b> failures, <b>${s}</b> successes</span><span class="sp"></span>${isUser?"":`<button class="btn sm" data-q="CONTOSO\\jsmith" id="pivotuser">Follow the user jsmith</button>`}</div>
+ <p style="color:var(--mute);margin:6px 0 0">${isUser?"<code>CONTOSO\\jsmith</code>, <code>jsmith@contoso.com</code> and <code>jsmith</code> all normalize to the same join value.":"Every row below came from one query on the index, not one query per table."}</p></div>
+ <div class="card" id="timeline"><h2>Timeline</h2>${timeline(rows)}</div>
+ <div class="card" id="results"><div class="tabs"><button class="on">Where it appears</button><button>Events ${rows.length}</button><button>Seen with it</button></div>
+ <table><thead><tr><th>Time (UTC)</th><th>Source group</th><th>Role</th><th>Result</th><th>Detail</th><th>Mapped by</th></tr></thead><tbody>
+ ${rows.slice().sort((a,b)=>a[0]<b[0]?-1:1).map(r=>`<tr class="click" data-raw="${esc(r[2])}"><td class="mono">${r[0].slice(11)}</td><td class="mono">${esc(r[1])}</td><td>${esc(r[3])}</td><td>${resTag(r[4])}</td><td>${esc(r[5])}</td><td>${esc(r[7])}</td></tr>`).join("")}</tbody></table>
+ <p style="color:var(--mute);font-size:12.5px;margin:8px 0 0">Click a row to open the original log line.</p></div>`}
+function timeline(rows){const sorted=rows.slice().sort((a,b)=>a[0]<b[0]?-1:1);const groups=[...new Set(sorted.map(r=>r[1]))];
+ const tm=r=>{const [h,m,s]=r[0].slice(11).split(":").map(Number);return h*3600+m*60+s};const t0=Math.min(...rows.map(tm)),t1=Math.max(...rows.map(tm)),span=Math.max(t1-t0,60);
+ const W=860,L=210,H=groups.length*26+34,x=t=>L+(t-t0)/span*(W-L-20);
+ const ticks=[0,.25,.5,.75,1].map(p=>t0+p*span);const fmt=t=>`${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t%3600/60)).padStart(2,"0")}`;
+ return `<svg class="svgtl" viewBox="0 0 ${W} ${H}" width="100%">${groups.map((g,i)=>`<text x="${L-10}" y="${i*26+18}" text-anchor="end">${esc(g)}</text><line x1="${L}" x2="${W-10}" y1="${i*26+14}" y2="${i*26+14}" stroke="#e3e7ec"/>`).join("")}
+ ${ticks.map(t=>`<line x1="${x(t)}" x2="${x(t)}" y1="0" y2="${H-22}" stroke="#eef1f4"/><text x="${x(t)}" y="${H-6}" text-anchor="middle">${fmt(t)}</text>`).join("")}
+ ${sorted.map(r=>{const y=groups.indexOf(r[1])*26+14,cx=x(tm(r));return r[4]==="Failure"?`<path d="M${cx-5},${y-5}L${cx+5},${y+5}M${cx+5},${y-5}L${cx-5},${y+5}" stroke="#c0392b" stroke-width="2.4"/>`:r[4]==="Success"?`<circle cx="${cx}" cy="${y}" r="6" fill="#1f8a4c"/>`:`<circle cx="${cx}" cy="${y}" r="5.5" fill="#fff" stroke="#0f6e8c" stroke-width="2"/>`}).join("")}</svg>
+ <div class="row" style="font-size:12px;color:var(--mute)"><span style="color:#1f8a4c">●</span> Success <span style="color:#c0392b">✕</span> Failure <span style="color:#0f6e8c">○</span> No result</div>`}
+V.about=()=>`<h1>How this works</h1><p class="sub">What the demo shows and what it leaves out.</p>
+ <div class="card"><h2>The index</h2><p>Scheduled lake jobs read every source table and write two lake tables. <code>HuntEntity</code> holds one row per entity, per hour, per source and role, with a count, first and last seen times and sample record keys. <code>HuntEvent</code> holds ASIM-shaped rows for sources mapped well enough to trust.</p>
+ <h2>The builders</h2><p>KQL jobs map structured sources through ASIM parser logic and registry rules. Notebook 02 (PySpark) maps free text through message templates and a value classifier. Notebook 01 proposes mappings daily; notebook 03 measures coverage daily and flags drift.</p>
+ <h2>The data</h2><p>All data is synthetic: documentation IP ranges, private 10.x addresses and contoso.com names. Nothing in this page calls a server.</p>
+ <h2>The real product</h2><p>Lake Hunt runs as one container with a web UI, a REST API and an MCP server for AI agents. See the repository README for deployment.</p></div>`;
+
+/* ---------------- render + events ---------------- */
+function render(){renderNav();$("#main").innerHTML=(V[S.screen]||V.home)();bind();applyHL()}
+function bind(){document.querySelectorAll("[data-go]").forEach(e=>e.onclick=ev=>{ev.stopPropagation();go(e.dataset.go)});
+ document.querySelectorAll("[data-q]").forEach(e=>e.onclick=()=>{S.query=e.dataset.q;doHunt()});
+ const on=(id,fn)=>{const e=document.getElementById(id);if(e)e.onclick=fn};
+ on("runnb01",runNb01);on("accepthi",()=>{S.fields.filter(f=>f.conf==="hi").forEach(f=>{f.dec=true;f.open=false});render()});
+ document.querySelectorAll("[data-acc]").forEach(e=>e.onclick=()=>{const f=S.fields[+e.dataset.acc];f.dec=true;f.open=false;render()});
+ document.querySelectorAll("[data-open]").forEach(e=>e.onclick=()=>{const f=S.fields[+e.dataset.open];f.open=!f.open;render()});
+ document.querySelectorAll("[data-typ]").forEach(e=>e.onclick=()=>{const [i,t]=e.dataset.typ.split("|");S.fields[+i].typ=t;render()});
+ document.querySelectorAll("[data-role]").forEach(e=>e.onclick=()=>{const [i,r]=e.dataset.role.split("|");S.fields[+i].role=r;render()});
+ document.querySelectorAll("[data-use]").forEach(e=>e.onclick=()=>{const f=S.fields[+e.dataset.use];f.dec=true;f.open=false;render()});
+ on("topreview",()=>{S.onboard.step=3;render()});on("backfields",()=>{S.onboard.step=2;render()});on("tosubmit",()=>{S.onboard.step=4;render()});
+ on("dosubmit",()=>{S.onboard.submitted=true;toast("Submitted. Change #14 is waiting for an admin.");render()});
+ on("doapprove",()=>{S.approved=true;toast("Approved #14. The registry generated the lake job.");go("onboard")});
+ on("doreject",()=>toast("In the real app this asks for a reason and returns the change to the analyst."));
+ on("dodeploy",()=>{S.deployed=true;toast("Marked as deployed. Validation starts.");render()});
+ on("runchecks",runChecks);on("handok",()=>{S.checks[1]=2;render();if(S.checks.every(c=>c===2))toast("All four checks passed. BadgeReader_CL is live.")});
+ on("fixdrift",()=>{S.driftFixed=true;toast("Template added to the registry and deployed after approval.");render()});
+ on("dohunt",()=>{S.query=$("#q").value.trim();doHunt()});const q=$("#q");if(q)q.onkeydown=e=>{if(e.key==="Enter"){S.query=q.value.trim();doHunt()}};
+ document.querySelectorAll("[data-raw]").forEach(e=>e.onclick=()=>openRaw(e.dataset.raw));
+ const k=$("#kind");if(k)k.onchange=()=>toast("Presets change the recommended roles. Physical access keeps the holder as the actor.")}
+function doHunt(){S.screen="hunt";S.hunted=huntRows(S.query);render()}
+function runNb01(){if(S.nb01!=="waiting")return;S.nb01="running";S.nb01log=[];render();
+ const L=["02:00:04 job notebook-01-inventory started on pool small (12 vCores)","02:00:41 listing lake tables: 31 tables, 9 source groups registered","02:01:12 sampling 5,000 rows per table from the last 24 hours","02:02:30 profiling fields: typed columns, JSON keys, key=value keys","02:03:55 BadgeReader_CL: new table, not in the registry","02:04:02   holder: 100% UPN · reader: 100% IPv4 · result: 2 values · door · badge","02:04:40 VpnAppliance_CL: 36% of rows match no template","02:05:21   mined 1 template candidate from 8,214 unmatched lines","02:06:10 wrote FieldInventory_SPRK and TemplateCandidates_SPRK","02:06:58 proposals opened for review: 2","02:07:03 job finished in 6 min 59 s"];
+ let i=0;const t=setInterval(()=>{S.nb01log.push(L[i++]);const lg=$("#log");if(lg){lg.innerHTML=S.nb01log.map(l=>`<div>${esc(l)}</div>`).join("");lg.scrollTop=1e4}const b=$("#nb01bar");if(b)b.style.width=(i/L.length*100)+"%";
+  if(i>=L.length){clearInterval(t);S.nb01="done";render();toast("Notebook 01 finished. 2 proposals are waiting.")}},380)}
+function runChecks(){S.checks=[1,0,0,0];render();const seq=[[0,2],[1,1],[2,1],[2,2],[3,1],[3,2]];let i=0;const t=setInterval(()=>{const [k,v]=seq[i++];S.checks[k]=v;render();if(i>=seq.length)clearInterval(t)},600)}
+function openRaw(src){const r=RAW[src];const d=$("#drawer");if(!r){d.innerHTML=`<div class="row"><h2 style="margin:0">Original record</h2><span class="sp"></span><button class="btn sm" id="cl">Close</button></div><p>This demo includes raw rows for a few sources only. In the product every index row opens its original record.</p>`}else{
+ d.innerHTML=`<div class="row"><h2 style="margin:0">Original record</h2><span class="sp"></span><button class="btn sm" id="cl">Close</button></div><p style="color:var(--mute)">Table <code>${esc(r.table)}</code>, found from the index row's record key.</p><pre>${esc(JSON.stringify(r.row,null,2))}</pre>
+ <h2 style="font-size:14px;margin-top:14px">Pivot query</h2><pre>${esc(r.table)}\n| where TimeGenerated between (datetime(${r.row.TimeGenerated}) - 1s .. datetime(${r.row.TimeGenerated}) + 1s)\n| where hash_sha256(strcat(tostring(TimeGenerated), "|", ${r.table.endsWith("_CL")?"RawData":"..."})) == SourceRecordKey</pre>`}
+ d.classList.add("open");$("#cl").onclick=closeDrawer}
+function closeDrawer(){$("#drawer").classList.remove("open")}
+document.querySelectorAll("#role button").forEach(b=>b.onclick=()=>setRole(b.dataset.r));
+
+/* ---------------- guided walkthrough ---------------- */
+const T=[
+ {s:"overview",hl:"#sched",t:"The daily schedule",x:`<p>This is a static demo of Lake Hunt, a hunt index for the Microsoft Sentinel data lake. All data is synthetic.</p><p>Four kinds of job run on a schedule: notebook 01 daily, KQL jobs and notebook 02 hourly, notebook 03 daily. The operator's day starts with what they produced overnight.</p>`},
+ {s:"overview",hl:"#nb01",t:"Notebook 01 kicks off",x:`<p>At 02:00 notebook 01 scans every lake table and profiles each field. Press <b>Next</b> to run it, or click <b>Run now</b>.</p>`,go:()=>runNb01(),wait:()=>S.nb01==="done"},
+ {s:"overview",hl:"#nb01result",t:"What it found",x:`<p>One new table, <code>BadgeReader_CL</code>, with five proposed fields. And a format change in the VPN appliance logs that broke an existing template.</p><p>Nothing changes in the index until a person reviews these.</p>`},
+ {s:"home",hl:"#attn",t:"The operator's morning",x:`<p>Home collects everything that needs a person: new sources, changes waiting for approval and drift alerts. Start with the new table.</p>`},
+ {s:"onboard",hl:"#fg-hi",t:"New fields to add to the index",x:`<p>Each field arrives with a recommendation, the reason and sample values. The operator never types ASIM names; they pick what the field is and what role it plays.</p><p>Next accepts the three high-confidence fields.</p>`,go:()=>{S.fields.filter(f=>f.conf==="hi").forEach(f=>f.dec=true)}},
+ {s:"onboard",hl:"#fg-med",t:"A field that needs a decision",x:`<p><code>door</code> is medium confidence. Click <b>Change</b> to see the choices. Here it is the name of the door controller, so it becomes the reporting device.</p><p><code>badge</code> is a badge number, not an entity, so it stays in the raw row.</p>`,go:()=>{S.fields.forEach(f=>f.dec=true)}},
+ {s:"onboard",hl:"#pv",t:"Preview before anything changes",x:`<p>The preview runs the mapping on sample rows: 99.6% extraction against a 90% target, and one raw row next to the three index rows it produces.</p>`,pre:()=>{S.onboard.step=3}},
+ {s:"onboard",hl:"#submitbar",t:"Submit for approval",x:`<p>Submitting writes a registry entry as a change request. Next submits it.</p>`,pre:()=>{S.onboard.step=4},go:()=>{S.onboard.submitted=true}},
+ {s:"approve",hl:"#apprcard",t:"An admin approves",x:`<p>Analysts and AI agents can draft and submit changes. Only a person with the Admin role approves them. The demo switches the role to Admin; Next approves.</p>`,pre:()=>{S.role="Admin"},go:()=>{S.approved=true}},
+ {s:"onboard",hl:"#deploycard",t:"Generate and deploy the job",x:`<p>The registry generates the lake job. It writes the hourly rollup into <code>HuntEntity</code>: one row per entity, hour, source and role. Next marks it deployed.</p>`,go:()=>{S.deployed=true}},
+ {s:"onboard",hl:"#checks",t:"Four checks before it goes live",x:`<p>Coverage numbers, a hand check of sample rows, a canary event found through the agent, and a pivot back to the raw row. Next runs them.</p>`,go:()=>{S.checks=[2,2,2,2]}},
+ {s:"coverage",hl:"#covtable",t:"Coverage and drift",x:`<p>Notebook 03 writes this table daily. <code>BadgeReader_CL</code> is now Tier 1. <code>VpnAppliance_CL</code> dropped to 64% after a firmware update.</p>`},
+ {s:"drift",hl:"#newtpl",t:"Fixing drift",x:`<p>Notebook 01 mined a template from the lines that stopped matching. Accepting it goes through the same approval and brings extraction back to 97%.</p>`,go:()=>{S.driftFixed=true}},
+ {s:"hunt",hl:"#huntbox",t:"A basic threat hunt",x:`<p>An alert names <code>203.0.113.45</code>. One search covers every source. Next runs it.</p>`,go:()=>{S.query="203.0.113.45";S.hunted=huntRows(S.query)}},
+ {s:"hunt",hl:"#timeline",t:"One query, ten source groups",x:`<p>A password spray across the firewall, Windows, Entra ID, sshd, Okta, the expenses app and the VPN. Then a success in Entra ID at 09:20 and an AWS console sign-in at 09:35.</p><p>Click any row in the table to open the original log line.</p>`},
+ {s:"hunt",hl:"#summary",t:"Follow the user",x:`<p>The account that got in is jsmith. Next pivots to the user. <code>CONTOSO\\jsmith</code> matches the UPN and bare name in every source.</p>`,go:()=>{S.query="CONTOSO\\jsmith";S.hunted=huntRows(S.query)}},
+ {s:"hunt",hl:"#finding",t:"The new source pays off",x:`<p>The badge reader onboarded this morning shows jsmith entering the office at 09:08, twelve minutes before the "remote" sign-in from 203.0.113.45. That sign-in was not jsmith.</p><p>The same account then logs on to WS-0412 and sends 1.8 GB to <code>198.51.100.7</code>.</p>`},
+ {s:"home",hl:"#attn",t:"End of the walkthrough",x:`<p>The queue is clear. Overnight jobs proposed the work, a person decided, and the hunt used the result the same morning.</p><p>Explore freely from the menu, or restart the walkthrough from the top bar.</p>`},
+];
+let ti=0,tmin=false;
+function applyHL(){document.querySelectorAll(".hl").forEach(e=>e.classList.remove("hl"));if(tmin||ti<0)return;const st=T[ti];if(!st||S.screen!==st.s)return;const e=$(st.hl);if(e){e.classList.add("hl");const r=e.getBoundingClientRect();if(r.top<60||r.bottom>innerHeight-220)e.scrollIntoView({behavior:"smooth",block:"center"})}}
+function showStep(i){ti=i;const st=T[i];if(st.pre)st.pre();if(S.screen!==st.s){S.screen=st.s;closeDrawer()}render();renderTour()}
+function renderTour(){const t=$("#tour"),st=T[ti];t.className="tour"+(tmin?" min":"");document.body.classList.toggle("touring",!tmin);
+ t.innerHTML=`<div class="mintxt">Show walkthrough (step ${ti+1} of ${T.length})</div><div class="body"><div class="row"><span class="meta">Walkthrough · step ${ti+1} of ${T.length}</span><span class="sp"></span><button class="btn sm" id="tmin">Hide</button></div>
+ <div class="ttl">${esc(st.t)}</div><div class="txt">${st.x}</div><div class="prog"><i style="width:${(ti+1)/T.length*100}%"></i></div>
+ <div class="row"><button class="btn sm" id="tback" ${ti===0?"disabled":""}>Back</button><span class="sp"></span>${ti<T.length-1?'<button class="btn pri sm" id="tnext">Next</button>':'<button class="btn pri sm" id="tdone">Finish</button>'}</div></div>`;
+ if(tmin){t.onclick=()=>{tmin=false;renderTour();applyHL()};return}t.onclick=null;
+ $("#tmin").onclick=e=>{e.stopPropagation();tmin=true;renderTour();applyHL()};
+ $("#tback").onclick=()=>showStep(Math.max(0,ti-1));
+ const n=$("#tnext");if(n)n.onclick=()=>{const st=T[ti];if(st.go)st.go();if(st.wait&&!st.wait()){n.disabled=true;const iv=setInterval(()=>{if(st.wait()){clearInterval(iv);showStep(ti+1)}},300);return}showStep(ti+1)};
+ const d=$("#tdone");if(d)d.onclick=()=>{tmin=true;renderTour();applyHL()}}
+function reset(){Object.assign(S,{screen:"overview",role:"Analyst",nb01:"waiting",nb01log:[],onboard:{step:2,submitted:false},fields:null,approved:false,deployed:false,checks:[0,0,0,0],driftFixed:false,query:"",hunted:null});tmin=false;S.fields=FIELDS0.map(f=>({...f,dec:null,role:f.rec,typ:f.type,open:false}));showStep(0)}
+$("#restart").onclick=reset;
+reset();
+</script>
+</body>
+</html>

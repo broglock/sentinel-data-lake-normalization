@@ -1,0 +1,34 @@
+# Shared vocabularies used by generate.py and the notebooks.
+
+# EventResult mapping. Values are compared lowercased and trimmed.
+result_vocab:
+  default:
+    Success: [success, succeeded, successful, allow, allowed, accept, accepted, permit, permitted, pass, passed, ok, "true"]
+    Failure: [fail, failed, failure, deny, denied, block, blocked, drop, dropped, reject, rejected, error, invalid, "false", reset-both, reset-client, reset-server]
+    Partial: [partial, partially]
+    http_status: true   # numeric 100-399 -> Success, 400-599 -> Failure
+
+# Role tokens matched against field names (lowercased, separators removed).
+# Used only to PROPOSE roles; an analyst approves every rule.
+role_tokens:
+  Src: [src, source, client, orig, callerip, srcip, sourceip, fromip]
+  Dst: [dst, dest, destination, server, resp, toip, dstip, destinationip]
+  Actor: [user, username, account, actor, initiator, subject, principal, login, caller]
+  Target: [target, member, object, affected, recipient]
+  Dvc: [host, hostname, computer, device, dvc, observer, reporter, sensor]
+  Unknown: [ip, address, addr, remote, peer, local]
+
+# Synonyms for proposing ASIM field names from column names.
+synonyms:
+  SrcIpAddr: [srcip, sourceip, src_ip, srcaddr, clientip, callerip, ipaddress, client_ip, c_ip]
+  DstIpAddr: [dstip, destinationip, dst_ip, dstaddr, serverip, destip, s_ip]
+  ActorUsername: [user, username, userprincipalname, account, suser, actor, initiatedby, caller]
+  TargetUsername: [targetuser, targetusername, duser, member, affecteduser]
+  DvcHostname: [host, hostname, computer, devicename, dvchost, observer]
+  Url: [url, requesturl, uri, request_uri, cs_uri]
+  DstDomain: [domain, dnsquery, query, hostheader, cs_host]
+  FileSHA256: [sha256, filehash, hash]
+  FileMD5: [md5]
+
+# Values that mean "no value".
+null_values: ["", "-", "n/a", "na", "null", "(null)", "none", "unknown", "0.0.0.0", "::"]

@@ -1,0 +1,21 @@
+Parser:
+  Title: Sample synthetic parser for testing asim_expand
+ParserName: vimNetworkSessionSample
+ParserParams:
+  - Name: disabled
+    Type: bool
+    Default: false
+  - Name: srcipaddr_has_any_prefix
+    Type: dynamic
+    Default: dynamic([])
+ParserQuery: |
+  let DisabledParsers=_ASIM_GetDisabledParsers('vimNetworkSessionSample');
+  CommonSecurityLog
+  | where not(disabled)
+  | where DeviceVendor == "Palo Alto Networks"
+  | where array_length(srcipaddr_has_any_prefix) == 0 or has_any_ipv4_prefix(SourceIP, srcipaddr_has_any_prefix)
+  | invoke _ASIM_ResolveDvcFQDN('DeviceName')
+  | extend SrcUsernameType = _ASIM_GetUsernameType(SourceUserName),
+           NetworkProtocol = _ASIM_LookupNetworkProtocol(Protocol)
+  | project-rename SrcIpAddr = SourceIP, DstIpAddr = DestinationIP
+  | extend EventProduct = "PanOS"

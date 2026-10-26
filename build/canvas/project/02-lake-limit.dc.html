@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>02 Why ASIM stops at the lake</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#001AFF}a:hover{color:#05052F}
+</style>
+</helmet>
+<div style="width: 1080px; height: 1350px; box-sizing: border-box; display: flex; flex-direction: column; background: #FFFFFF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; overflow: hidden">
+<div style="background: #05052F; padding: 40px 56px 36px; display: flex; flex-direction: column; gap: 14px; flex: none">
+<div style="display: flex; align-items: center; gap: 14px"><svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true"><polygon points="8,0 14,0 6,28 0,28" fill="#00AAFF"></polygon><polygon points="20,0 26,0 18,28 12,28" fill="#001AFF"></polygon><polygon points="32,0 38,0 30,28 24,28" fill="#D5FE51"></polygon></svg><span style="color: #CBE9FF; font-size: 14px; letter-spacing: 2px">SENTINEL DATA LAKE NORMALIZATION · 2 OF 10</span></div>
+<h1 style="margin: 0; color: #FFFFFF; font-size: 42px; line-height: 50px; font-weight: 400">ASIM parsers do not run on the Sentinel data lake</h1>
+<p style="margin: 0; color: #CBE9FF; font-size: 20px; line-height: 28px">Lake KQL does not support functions, and every ASIM parser is a function.</p>
+<div style="width: 96px; height: 6px; background: #CAFF00"></div>
+</div>
+<div style="flex: 1; min-height: 0; padding: 32px 56px 24px; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #001AFF">Analytics tier</div><div style="height: 6px"></div><div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Hunting query or analytics rule</span></div><div style="display: flex; justify-content: center; height: 22px"><svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M5 5 L14 16 L23 5" fill="none" stroke="#001AFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Calls <span style="font-family: Consolas, 'Liberation Mono', monospace">_Im_NetworkSession()</span></span></div><div style="display: flex; justify-content: center; height: 22px"><svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M5 5 L14 16 L23 5" fill="none" stroke="#001AFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Source parsers run (KQL functions)</span></div><div style="display: flex; justify-content: center; height: 22px"><svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M5 5 L14 16 L23 5" fill="none" stroke="#001AFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Tables return ASIM-shaped rows</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #05052F">Data lake tier</div><div style="height: 6px"></div><div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Hunting query or KQL job</span></div><div style="display: flex; justify-content: center; height: 22px"><svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M5 5 L14 16 L23 5" fill="none" stroke="#05052F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="background: #FFFFFF; border: 2px dashed #05052F; border-radius: 6px; padding: 13px 15px; display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#FFFFFF" stroke="#05052F" stroke-width="2"></circle><path d="M8 8 L16 16 M16 8 L8 16" fill="none" stroke="#05052F" stroke-width="2.6" stroke-linecap="round"></path></svg><span>Calls <span style="font-family: Consolas, 'Liberation Mono', monospace">_Im_NetworkSession()</span></span></div><div style="display: flex; justify-content: center; height: 22px"><svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M5 5 L14 16 L23 5" fill="none" stroke="#A5A5A5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="background: #F4F4F5; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px; color: #45455C"><span style="width: 22px; height: 22px; flex: none"></span><span>Source parsers never run</span></div><div style="display: flex; justify-content: center; height: 22px"><svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M5 5 L14 16 L23 5" fill="none" stroke="#A5A5A5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="background: #F4F4F5; border: 1px solid #DCDCDD; border-radius: 6px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; font-size: 17px; color: #45455C"><span style="width: 22px; height: 22px; flex: none"></span><span>No ASIM-shaped rows</span></div></div>
+</div>
+<div style="background: #05052F; color: #FFFFFF; border-radius: 6px; padding: 22px 26px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 22px; line-height: 30px">“Using out-of-the-box or custom functions isn't supported in KQL queries against the data lake.”</div>
+<div style="font-size: 14px; color: #CBE9FF">Microsoft Learn, KQL queries in the Microsoft Sentinel data lake. Every ASIM parser is a function.</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #05052F">Also not supported in lake KQL</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px"><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F4F4F5; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">externaldata()</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F4F4F5; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">adx()</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F4F4F5; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">arg()</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F4F4F5; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">ingestion_time()</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F4F4F5; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">estimate_data_size()</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F4F4F5; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; font-size: 15px; line-height: 20px">AzureDiagnostics and other legacy tables</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #001AFF">What still runs on the lake</div>
+<div style="display: flex; flex-direction: column; gap: 9px; font-size: 16px; line-height: 22px">
+<div style="display: flex; gap: 10px"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>KQL against the raw tables</span></div>
+<div style="display: flex; gap: 10px"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Native ASim tables, already in ASIM shape</span></div>
+<div style="display: flex; gap: 10px"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>KQL jobs with parser logic pasted in as plain KQL</span></div>
+<div style="display: flex; gap: 10px"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="11" fill="#001AFF"></circle><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>Spark notebooks</span></div>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px"><div style="font-size: 26px; color: #001AFF">15 min</div><div style="font-size: 14px; color: #45455C; line-height: 20px">before ingested data can be queried</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px"><div style="font-size: 26px; color: #001AFF">500,000 rows</div><div style="font-size: 14px; color: #45455C; line-height: 20px">or 64 MB per interactive result</div></div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 14px 16px"><div style="font-size: 26px; color: #001AFF">30 / min, 10 at once</div><div style="font-size: 14px; color: #45455C; line-height: 20px">query limits per tenant</div></div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 16px 20px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #001AFF">Same hunt, rewritten for the lake</div><div style="font-size: 15px; line-height: 21px; color: #45455C">The parser's mapping travels inside the query as plain KQL.</div></div>
+<div style="background: #05052F; border-radius: 4px; padding: 12px 16px; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 21px; color: #FFFFFF; white-space: pre">CommonSecurityLog
+| where DeviceVendor == "Palo Alto Networks"
+| project-rename SrcIpAddr = SourceIP,
+    DstIpAddr = DestinationIP, DvcHostname = DeviceName
+| extend EventVendor = "Palo Alto Networks"</div>
+</div>
+
+</div>
+<div style="flex: none; padding: 14px 56px 18px; border-top: 1px solid #DCDCDD; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 16px; color: #45455C">
+<div style="display: flex; justify-content: space-between; gap: 24px"><span>Sources: Microsoft Learn, KQL queries in the data lake; Troubleshoot KQL queries for the data lake</span><span style="flex: none">Checked 16 October 2026</span></div>
+<div>© 2026 LevelBlue Intellectual Property. LevelBlue logo, and registered trademarks and service marks are the property of LevelBlue Intellectual Property and/or LevelBlue affiliated companies. All other marks are the property of their respective owners.</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1350}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

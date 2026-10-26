@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LevelBlue Lake Hunt</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2305052F'/%3E%3Cg transform='skewX(-20) translate(10 0)'%3E%3Crect x='4' y='7' width='4' height='18' fill='%2300AAFF'/%3E%3Crect x='10' y='7' width='4' height='18' fill='%23001AFF'/%3E%3Crect x='16' y='7' width='4' height='18' fill='%23D5FE51'/%3E%3C/g%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <button class="burger" aria-label="Menu" onclick="document.querySelector('nav.side').classList.toggle('open')">☰</button>
+  <div class="brand"><span class="slashes"><i style="background:#00AAFF"></i><i style="background:#001AFF"></i><i style="background:#D5FE51"></i></span>LevelBlue <span style="font-weight:400">Lake Hunt</span><small id="ws"></small></div>
+  <div class="spacer"></div>
+  <span class="pill-mode" id="mode">demo</span>
+  <select id="demoRole" title="Demo only: view the app as another role" style="display:none">
+    <option value="admin">Admin</option><option value="analyst">Analyst</option><option value="viewer">Viewer</option>
+  </select>
+  <select id="theme" title="Theme"><option value="">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  <span class="who" id="who"></span>
+</header>
+<div class="layout">
+  <nav class="side" id="nav"></nav>
+  <main id="main"><div class="loader">Loading…</div></main>
+</div>
+<div class="tip" id="tip"></div>
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

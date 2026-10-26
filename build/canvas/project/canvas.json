@@ -1,0 +1,98 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-16T11:55:50Z"
+ },
+ "title": "Sentinel Data Lake Normalization",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "01 How ASIM works"
+  },
+  "02-lake-limit.dc.html": {
+   "x": 1160,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "02 Why ASIM stops at the lake"
+  },
+  "03-asim-coverage.dc.html": {
+   "x": 2320,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "03 ASIM coverage at scale"
+  },
+  "04-methods-compared.dc.html": {
+   "x": 3480,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "04 Normalization methods compared"
+  },
+  "05-discovery-pipeline.dc.html": {
+   "x": 0,
+   "y": 1470,
+   "w": 1080,
+   "h": 1350,
+   "title": "05 Discovery pipeline"
+  },
+  "06-confidence-matrix.dc.html": {
+   "x": 1160,
+   "y": 1470,
+   "w": 1080,
+   "h": 1350,
+   "title": "06 Confidence by entity and source"
+  },
+  "07-coverage-tiers.dc.html": {
+   "x": 2320,
+   "y": 1470,
+   "w": 1080,
+   "h": 1350,
+   "title": "07 Coverage tiers and drift"
+  },
+  "08-ask-to-microsoft.dc.html": {
+   "x": 3480,
+   "y": 1470,
+   "w": 1080,
+   "h": 1350,
+   "title": "08 The ask to Microsoft"
+  },
+  "09-syslog-worked-example.dc.html": {
+   "x": 0,
+   "y": 2940,
+   "w": 1080,
+   "h": 1350,
+   "title": "09 Worked example: syslog"
+  },
+  "10-scaling-raw-sources.dc.html": {
+   "x": 1160,
+   "y": 2940,
+   "w": 1080,
+   "h": 1350,
+   "title": "10 Scaling to many raw sources"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "02-lake-limit.dc.html",
+  "03-asim-coverage.dc.html",
+  "04-methods-compared.dc.html",
+  "05-discovery-pipeline.dc.html",
+  "06-confidence-matrix.dc.html",
+  "07-coverage-tiers.dc.html",
+  "08-ask-to-microsoft.dc.html",
+  "09-syslog-worked-example.dc.html",
+  "10-scaling-raw-sources.dc.html"
+ ],
+ "notes": {},
+ "designSystems": []
+}

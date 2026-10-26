@@ -1,0 +1,5 @@
+var/
+tests/
+tools/
+**/__pycache__/
+*.db

@@ -1,0 +1,129 @@
+# MCP tools over the hunt index. Each entry can be saved as a custom Sentinel MCP tool
+# (Defender portal > Advanced hunting > query > Save as tool; preview) or registered in
+# your own data lake MCP server. Parameters use the {Name} format the custom-tool
+# feature expects. All queries are plain KQL with no stored functions.
+#
+# Collection description (paste into the collection or server instructions):
+#   Hunt across every log source through the normalized hunt index. Start with hunt_value
+#   or hunt_entity, report how many sources matched at each tier, treat Role=Unknown as
+#   unknown, fetch originals with pivot_raw before quoting raw fields, and run search_raw
+#   on the tables listed by coverage before saying a value was not seen.
+
+tools:
+
+  - name: hunt_value
+    description: Find every log source where an IP, user, host, hash, URL or domain appeared.
+    parameters:
+      - {name: Value, description: "The value to look for, in any format (UPN, DOMAIN\\user, FQDN, IP:port)."}
+      - {name: LookbackDays, description: "Days to search back, 1 to 90."}
+    query: |
+      let raw = trim(@"\s", "{Value}");
+      let v = tolower(raw);
+      let vshort = case(v contains @"\", tostring(split(v, @"\")[1]),
+                        v matches regex @"^[^@\s]+@[^@\s]+$", tostring(split(v, "@")[0]),
+                        v matches regex @"^[a-z0-9-]+(\.[a-z0-9-]+)+$" and isnull(parse_ipv4(v)), tostring(split(v, ".")[0]),
+                        v);
+      HuntEntity_SPRK
+      | where EventStartTime > ago({LookbackDays}d)
+      | where ValueNorm in (v, vshort) or tolower(Value) == v
+      | summarize Events = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+                  Roles = make_set(Role), ValueForms = make_set(Value, 10), Tiers = make_set(MappingTier),
+                  EventTypes = make_set(EventType, 10)
+          by SourceTable, SourceGroup, EntityType
+      | order by Events desc
+
+  - name: hunt_entity
+    description: Find one entity type, optionally in one role, across every log source.
+    parameters:
+      - {name: EntityType, description: "ip, host, user, hash, url, domain or email."}
+      - {name: Value, description: "The value to look for."}
+      - {name: Role, description: "Src, Dst, Actor, Target, Dvc, Unknown, or * for any."}
+      - {name: LookbackDays, description: "Days to search back."}
+    query: |
+      let v = tolower(trim(@"\s", "{Value}"));
+      HuntEntity_SPRK
+      | where EventStartTime > ago({LookbackDays}d)
+      | where EntityType == "{EntityType}"
+      | where "{Role}" == "*" or Role == "{Role}"
+      | where ValueNorm == v or tolower(Value) == v or (EntityType == "url" and ValueNorm has v)
+      | summarize Events = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+                  Results = make_set(EventResult), Tiers = make_set(MappingTier)
+          by SourceTable, SourceGroup, Role
+      | order by Events desc
+
+  - name: auth_events
+    description: Logon events for a user with their result, from sources mapped at Tier 1.
+    parameters:
+      - {name: User, description: "User in any format."}
+      - {name: Result, description: "Success, Failure, or * for any."}
+      - {name: LookbackDays, description: "Days to search back."}
+    query: |
+      let v = tolower(trim(@"\s", "{User}"));
+      let vshort = case(v contains @"\", tostring(split(v, @"\")[1]), v contains "@", tostring(split(v, "@")[0]), v);
+      HuntEntity_SPRK
+      | where EventStartTime > ago({LookbackDays}d)
+      | where EntityType == "user" and ValueNorm == vshort and MappingTier == 1
+      | where EventType in ("Logon", "Logoff") or EventSchema == "Authentication"
+      | where "{Result}" == "*" or EventResult == "{Result}"
+      | join kind=leftouter (
+          HuntEntity_SPRK
+          | where EventStartTime > ago({LookbackDays}d) and EntityType == "ip" and Role == "Src"
+          | project SourceRecordKey, SrcIpAddr = ValueNorm
+        ) on SourceRecordKey
+      | project EventStartTime, SourceGroup, EventType, EventResult, User = Value, SrcIpAddr, SourceRecordKey
+      | order by EventStartTime desc
+      | take 500
+
+  - name: network_events
+    description: Network sessions involving an IP, with direction and device action, from Tier 1 sources.
+    parameters:
+      - {name: Ip, description: "IPv4 or IPv6 address."}
+      - {name: LookbackDays, description: "Days to search back."}
+    query: |
+      let ip = tolower(trim(@"\s", "{Ip}"));
+      HuntEvent_SPRK
+      | where EventStartTime > ago({LookbackDays}d)
+      | where SrcIpAddr == ip or DstIpAddr == ip
+      | summarize Sessions = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+                  Actions = make_set(DvcAction), Results = make_set(EventResult)
+          by SourceGroup, SrcIpAddr, DstIpAddr, DstPortNumber
+      | order by Sessions desc
+      | take 500
+
+  - name: pivot_raw
+    description: Fetch the original log rows behind an index row.
+    parameters:
+      - {name: SourceTable, description: "SourceTable from the index row."}
+      - {name: EventStartTime, description: "EventStartTime from the index row, ISO 8601."}
+      - {name: Value, description: "The Value from the index row."}
+    query: |
+      let t = todatetime("{EventStartTime}");
+      table("{SourceTable}")
+      | where TimeGenerated between ((t - 1s) .. (t + 1s))
+      | where * has "{Value}"
+      | take 20
+
+  - name: search_raw
+    description: Free-text search of one raw table, for values the index did not map.
+    parameters:
+      - {name: Table, description: "Table name, from the coverage tool."}
+      - {name: Text, description: "Literal text to find."}
+      - {name: LookbackHours, description: "Hours to search back; keep small, this scans raw data."}
+    query: |
+      table("{Table}")
+      | where TimeGenerated > ago({LookbackHours}h)
+      | where * has "{Text}"
+      | take 100
+
+  - name: coverage
+    description: How deeply each log source is indexed (tier, extraction rate, status).
+    parameters:
+      - {name: SourceGroup, description: "A group name, or * for all."}
+    query: |
+      HuntCoverage_SPRK
+      | where TimeGenerated > ago(2d)
+      | where "{SourceGroup}" == "*" or SourceGroup == "{SourceGroup}"
+      | summarize arg_max(TimeGenerated, *) by SourceGroup
+      | project SourceGroup, SourceTable, Tier, RawRows, IndexedRows, ExtractionRate,
+                TemplateMatchRate, UnknownRoleShare, LastIndexed, Status
+      | order by Tier asc, RawRows desc

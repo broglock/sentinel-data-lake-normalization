@@ -1,0 +1,256 @@
+# Demo registry: nine reviewed grammar groups. BadgeReader_CL is left out on purpose so the
+# onboarding screens have a new, unreviewed source to work through.
+# filter = KQL (KQL jobs), spark_filter = Spark SQL (notebook), py_filter = the in-app engine.
+version: 1
+defaults:
+  delay: 15m
+  window: 1h
+
+groups:
+  - id: "SecurityEvent:Logon"
+    table: SecurityEvent
+    filter: 'EventID in (4624, 4625)'
+    spark_filter: "EventID IN (4624, 4625)"
+    py_filter: {EventID: [4624, 4625]}
+    vendor: Microsoft
+    product: Security Events
+    schema: Authentication
+    engine: kql_job
+    asim_reference: _Im_Authentication_MicrosoftWindowsEvent
+    layer: asim
+    record_key_fields: [Computer, EventID, TargetUserName, IpAddress]
+    event_type: {column: EventID, map: {"4624": Logon, "4625": Logon}}
+    result: {column: EventID, map: {"4624": Success, "4625": Failure}}
+    tier: 1
+    fields:
+      - {column: TargetUserName, asim: TargetUsername, entity: user, role: Target}
+      - {column: IpAddress, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: WorkstationName, asim: SrcHostname, entity: host, role: Src}
+      - {column: Computer, asim: DvcHostname, entity: host, role: Dvc}
+      - {column: SubStatus, asim: EventResultDetails}
+
+  - id: "SigninLogs:Interactive"
+    table: SigninLogs
+    filter: 'true'
+    spark_filter: "true"
+    vendor: Microsoft
+    product: Entra ID
+    schema: Authentication
+    engine: kql_job
+    asim_reference: _Im_Authentication_AADSigninLogs
+    layer: asim
+    record_key_fields: [Id]
+    event_type: {constant: Logon}
+    result: {column: ResultType, map: {"0": Success}, default: Failure}
+    tier: 1
+    fields:
+      - {column: UserPrincipalName, asim: TargetUsername, entity: user, role: Target}
+      - {column: IPAddress, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: ResultType, asim: EventResultDetails}
+
+  - id: "CEF:Fortinet/Fortigate"
+    table: CommonSecurityLog
+    filter: 'DeviceVendor == "Fortinet" and DeviceProduct startswith "Fortigate"'
+    spark_filter: "DeviceVendor = 'Fortinet' AND DeviceProduct LIKE 'Fortigate%'"
+    py_filter: {DeviceVendor: Fortinet, DeviceProduct: "Fortigate*"}
+    vendor: Fortinet
+    product: FortiGate
+    schema: NetworkSession
+    engine: kql_job
+    asim_reference: _Im_NetworkSession_FortinetFortiGate
+    layer: asim
+    record_key_fields: [DeviceName, SourceIP, DestinationIP, SourcePort]
+    event_type: {constant: NetworkSession}
+    result: {column: DeviceAction}
+    tier: 1
+    fields:
+      - {column: SourceIP, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: DestinationIP, asim: DstIpAddr, entity: ip, role: Dst}
+      - {column: SourcePort, asim: SrcPortNumber}
+      - {column: DestinationPort, asim: DstPortNumber}
+      - {column: SourceUserName, asim: SrcUsername, entity: user, role: Src}
+      - {column: DeviceName, asim: DvcHostname, entity: host, role: Dvc}
+      - {column: DeviceAction, asim: DvcAction}
+      - {column: Protocol, asim: NetworkProtocol}
+
+  - id: "CEF:PaloAlto/PAN-OS"
+    table: CommonSecurityLog
+    filter: 'DeviceVendor == "Palo Alto Networks" and DeviceProduct == "PAN-OS"'
+    spark_filter: "DeviceVendor = 'Palo Alto Networks' AND DeviceProduct = 'PAN-OS'"
+    py_filter: {DeviceVendor: Palo Alto Networks, DeviceProduct: PAN-OS}
+    vendor: Palo Alto Networks
+    product: PAN-OS
+    schema: NetworkSession
+    engine: kql_job
+    asim_reference: _Im_NetworkSession_PaloAltoCEF
+    layer: asim
+    record_key_fields: [DeviceName, SourceIP, DestinationIP, SourcePort]
+    event_type: {constant: NetworkSession}
+    result: {column: DeviceAction}
+    tier: 1
+    fields:
+      - {column: SourceIP, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: DestinationIP, asim: DstIpAddr, entity: ip, role: Dst}
+      - {column: DestinationPort, asim: DstPortNumber}
+      - {column: SourceUserName, asim: SrcUsername, entity: user, role: Src}
+      - {column: DeviceName, asim: DvcHostname, entity: host, role: Dvc}
+      - {column: DeviceAction, asim: DvcAction}
+
+  - id: "Syslog:sshd"
+    table: Syslog
+    filter: 'ProcessName == "sshd"'
+    spark_filter: "ProcessName = 'sshd'"
+    py_filter: {ProcessName: sshd}
+    vendor: OpenBSD
+    product: OpenSSH
+    schema: Authentication
+    engine: kql_job
+    asim_reference: _Im_Authentication_Sshd
+    layer: template
+    record_key_fields: [Computer, SyslogMessage]
+    text_column: SyslogMessage
+    constant_entities:
+      - {column: Computer, entity: host, role: Dvc, asim: DvcHostname}
+    templates:
+      - id: sshd-failed-password
+        match: "Failed password for"
+        regex: 'Failed password for (?:invalid user )?(?P<TargetUsername>\S+) from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logon
+        event_result: Failure
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+      - id: sshd-accepted
+        match: "Accepted "
+        regex: 'Accepted (?:password|publickey|keyboard-interactive/pam) for (?P<TargetUsername>\S+) from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logon
+        event_result: Success
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+      - id: sshd-session-opened
+        match: "session opened for user"
+        regex: 'session opened for user (?P<TargetUsername>\S+)'
+        event_type: Logon
+        event_result: Success
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+      - id: sshd-disconnect
+        match: "Received disconnect from"
+        regex: 'Received disconnect from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logoff
+        event_result: Success
+        tier: 1
+        slots:
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+
+  - id: "AWSCloudTrail:ConsoleLogin"
+    table: AWSCloudTrail
+    filter: 'EventName == "ConsoleLogin"'
+    spark_filter: "EventName = 'ConsoleLogin'"
+    py_filter: {EventName: ConsoleLogin}
+    vendor: AWS
+    product: CloudTrail
+    schema: Authentication
+    engine: kql_job
+    asim_reference: _Im_Authentication_AWSCloudTrail
+    layer: asim
+    record_key_fields: [AwsEventId]
+    event_type: {constant: Logon}
+    result: {path: ResponseElements.ConsoleLogin}
+    tier: 1
+    fields:
+      - {column: SourceIpAddress, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: UserIdentityUserName, asim: TargetUsername, entity: user, role: Target}
+
+  - id: "AWSCloudTrail:API"
+    table: AWSCloudTrail
+    filter: 'EventName != "ConsoleLogin"'
+    spark_filter: "EventName <> 'ConsoleLogin'"
+    py_filter: {EventName: [DescribeInstances, GetObject, ListBuckets, AssumeRole]}
+    vendor: AWS
+    product: CloudTrail
+    schema: AuditEvent
+    engine: kql_job
+    layer: registry
+    record_key_fields: [AwsEventId]
+    event_type: {column: EventName}
+    tier: 1
+    fields:
+      - {column: SourceIpAddress, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: UserIdentityUserName, asim: ActorUsername, entity: user, role: Actor}
+
+  - id: "OktaV2_CL:session"
+    table: OktaV2_CL
+    filter: 'EventOriginalType == "user.session.start"'
+    spark_filter: "EventOriginalType = 'user.session.start'"
+    py_filter: {EventOriginalType: user.session.start}
+    vendor: Okta
+    product: Okta
+    schema: Authentication
+    engine: notebook
+    asim_reference: _Im_Authentication_OktaSSO
+    layer: asim
+    record_key_fields: [EventOriginalUid]
+    event_type: {constant: Logon}
+    result: {column: OriginalOutcomeResult}
+    tier: 1
+    fields:
+      - {column: ActorAlternateId, asim: TargetUsername, entity: user, role: Target}
+      - {column: SrcIpAddr, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: HttpUserAgent, asim: HttpUserAgent}
+
+  - id: "AppAudit_CL:v2"
+    table: AppAudit_CL
+    filter: 'isnotempty(Properties)'
+    spark_filter: "Properties IS NOT NULL"
+    vendor: Contoso
+    product: Expenses
+    schema: Authentication
+    engine: notebook
+    layer: registry
+    record_key_path: Properties.eventId
+    event_type: {path: Properties.operation, map: {Login: Logon, Logout: Logoff}, default: Other}
+    result: {path: Properties.outcome}
+    tier: 1
+    fields:
+      - {path: Properties.client.addr, asim: SrcIpAddr, entity: ip, role: Src}
+      - {path: Properties.actor.upn, asim: TargetUsername, entity: user, role: Target}
+      - {path: Properties.resource.url, asim: Url, entity: url, role: Unknown}
+
+  - id: "VpnAppliance_CL:raw"
+    table: VpnAppliance_CL
+    filter: 'isnotempty(RawData)'
+    spark_filter: "RawData IS NOT NULL AND RawData <> ''"
+    vendor: Unknown
+    product: VPN appliance
+    schema: Authentication
+    engine: notebook
+    layer: template
+    record_key_fields: [RawData]
+    text_column: RawData
+    templates:
+      - id: vpn-auth-fail
+        match: "auth=fail"
+        regex: 'auth=fail user=(?P<TargetUsername>\S+) src=(?P<SrcIpAddr>\S+)'
+        event_type: Logon
+        event_result: Failure
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+      - id: vpn-auth-ok
+        match: "auth=ok"
+        regex: 'auth=ok user=(?P<TargetUsername>\S+) src=(?P<SrcIpAddr>\S+)'
+        event_type: Logon
+        event_result: Success
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}

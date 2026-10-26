@@ -1,0 +1,139 @@
+# Five log sources, end to end. Three have Microsoft ASIM parsers (mapping matched
+# to the parser output), two have none (registry rules and the classifier).
+# Every mapping below is plain data; generate.py turns it into lake KQL and the
+# notebook runs the same rules in Spark.
+
+version: 1
+defaults:
+  delay: 15m
+  window: 1h
+
+groups:
+
+  # 1 ------------------------------------------------ Windows sign-ins (ASIM parser exists:
+  #   _Im_Authentication_MicrosoftWindowsEvent). Rules written to produce the same ASIM fields
+  #   as that parser; diff them against the parser YAML before production (lab test 13).
+  - id: "SecurityEvent:Logon"
+    table: SecurityEvent
+    filter: 'EventID in (4624, 4625)'
+    spark_filter: "EventID IN (4624, 4625)"
+    vendor: Microsoft
+    product: Security Events
+    schema: Authentication
+    engine: kql_job
+    asim_reference: _Im_Authentication_MicrosoftWindowsEvent
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", Computer, "|", tostring(EventID), "|", TargetUserName, "|", IpAddress))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(Computer, ''), coalesce(cast(EventID as string), ''), coalesce(TargetUserName, ''), coalesce(IpAddress, '')), 256)"
+    event_type: {column: EventID, map: {"4624": Logon, "4625": Logon}}
+    result: {column: EventID, map: {"4624": Success, "4625": Failure}}
+    tier: 1
+    fields:
+      - {column: TargetUserName, asim: TargetUsername, entity: user, role: Target}
+      - {column: IpAddress, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: WorkstationName, asim: SrcHostname, entity: host, role: Src}
+      - {column: Computer, asim: DvcHostname, entity: host, role: Dvc}
+      - {column: SubStatus, asim: EventResultDetails}
+
+  # 2 ------------------------------------------------ FortiGate traffic over CEF (ASIM parser
+  #   exists: _Im_NetworkSession_FortinetFortiGate). Rules written to match that parser's output.
+  - id: "CEF:Fortinet/Fortigate"
+    table: CommonSecurityLog
+    filter: 'DeviceVendor == "Fortinet" and DeviceProduct startswith "Fortigate"'
+    spark_filter: "DeviceVendor = 'Fortinet' AND DeviceProduct LIKE 'Fortigate%'"
+    vendor: Fortinet
+    product: FortiGate
+    schema: NetworkSession
+    engine: kql_job
+    asim_reference: _Im_NetworkSession_FortinetFortiGate
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", DeviceName, "|", SourceIP, "|", DestinationIP, "|", tostring(SourcePort)))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(DeviceName, ''), coalesce(SourceIP, ''), coalesce(DestinationIP, ''), coalesce(cast(SourcePort as string), '')), 256)"
+    event_type: {constant: NetworkSession}
+    result: {column: DeviceAction}
+    tier: 1
+    fields:
+      - {column: SourceIP, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: DestinationIP, asim: DstIpAddr, entity: ip, role: Dst}
+      - {column: SourcePort, asim: SrcPortNumber}
+      - {column: DestinationPort, asim: DstPortNumber}
+      - {column: SourceUserName, asim: SrcUsername, entity: user, role: Src}
+      - {column: DeviceName, asim: DvcHostname, entity: host, role: Dvc}
+      - {column: DeviceAction, asim: DvcAction}
+      - {column: Protocol, asim: NetworkProtocol}
+
+  # 3 ------------------------------------------------ Linux sshd over Syslog (ASIM parser
+  #   exists: _Im_Authentication_Sshd). Templates cover the same messages as that parser.
+  - id: "Syslog:sshd"
+    table: Syslog
+    filter: 'ProcessName == "sshd"'
+    spark_filter: "ProcessName = 'sshd'"
+    vendor: OpenBSD
+    product: OpenSSH
+    schema: Authentication
+    engine: kql_job
+    asim_reference: _Im_Authentication_Sshd
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", Computer, "|", SyslogMessage))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(Computer, ''), coalesce(SyslogMessage, '')), 256)"
+    text_column: SyslogMessage
+    constant_entities:
+      - {column: Computer, entity: host, role: Dvc, asim: DvcHostname}
+    templates:
+      - id: sshd-failed-password
+        match: "Failed password for"
+        regex: 'Failed password for (?:invalid user )?(?P<TargetUsername>\S+) from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logon
+        event_result: Failure
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+      - id: sshd-accepted
+        match: "Accepted "
+        regex: 'Accepted (?:password|publickey|keyboard-interactive/pam) for (?P<TargetUsername>\S+) from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logon
+        event_result: Success
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+
+  # 4 ------------------------------------------------ In-house SaaS app, JSON audit log in a
+  #   custom table. No ASIM parser. Rules proposed by notebook 01, approved by an analyst.
+  - id: "AppAudit_CL:v2"
+    table: AppAudit_CL
+    filter: 'isnotempty(Properties)'
+    spark_filter: "Properties IS NOT NULL"
+    vendor: Contoso
+    product: Expenses
+    schema: Authentication
+    engine: notebook
+    time_column: TimeGenerated
+    record_key: 'tostring(Properties.eventId)'
+    spark_record_key: "get_json_object(Properties, '$.eventId')"
+    event_type: {path: Properties.operation, map: {Login: Logon, Logout: Logoff}, default: Other}
+    result: {path: Properties.outcome}
+    tier: 1
+    fields:
+      - {path: Properties.client.addr, asim: SrcIpAddr, entity: ip, role: Src}
+      - {path: Properties.actor.upn, asim: TargetUsername, entity: user, role: Target}
+      - {path: Properties.resource.url, asim: Url, entity: url, role: Unknown}
+
+  # 5 ------------------------------------------------ VPN appliance, raw key=value text in
+  #   RawData. No ASIM parser, nothing reviewed yet: the classifier only (Tier 2).
+  - id: "VpnAppliance_CL:raw"
+    table: VpnAppliance_CL
+    filter: 'isnotempty(RawData)'
+    spark_filter: "RawData IS NOT NULL AND RawData <> ''"
+    vendor: Unknown
+    product: VPN appliance
+    schema: ""
+    engine: notebook
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", RawData))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(RawData, '')), 256)"
+    text_column: RawData
+    templates: []

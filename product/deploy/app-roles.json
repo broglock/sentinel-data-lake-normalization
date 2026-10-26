@@ -1,0 +1,35 @@
+[
+  {
+    "allowedMemberTypes": [
+      "User",
+      "Application"
+    ],
+    "description": "Approve registry and workspace changes, retire entries, read the audit log.",
+    "displayName": "Lake Hunt Admin",
+    "isEnabled": true,
+    "value": "LakeHunt.Admin",
+    "id": "6ab58e08-2413-5d6f-97bb-72772b84698e"
+  },
+  {
+    "allowedMemberTypes": [
+      "User",
+      "Application"
+    ],
+    "description": "Review fields, save and submit drafts, run validation, request deployments, hunt.",
+    "displayName": "Lake Hunt Analyst",
+    "isEnabled": true,
+    "value": "LakeHunt.Analyst",
+    "id": "de265e2f-e748-5445-b3d5-c0d4e8267fa2"
+  },
+  {
+    "allowedMemberTypes": [
+      "User",
+      "Application"
+    ],
+    "description": "Read dashboards and coverage, hunt.",
+    "displayName": "Lake Hunt Viewer",
+    "isEnabled": true,
+    "value": "LakeHunt.Viewer",
+    "id": "6bd063e2-4191-5303-8f07-f85f7774ff29"
+  }
+]

@@ -1,0 +1,123 @@
+# Grammar-group registry: the single source of every mapping.
+# filter / record_key are KQL (KQL jobs, MCP tools); spark_filter / spark_record_key are
+# Spark SQL (notebooks, coverage). Both forms must select the same rows and build the
+# same key, byte for byte: format times to milliseconds and turn nulls into '' in both.
+# One entry per grammar group (one table + one message format).
+# generate.py turns this file into KQL job queries, the long-tail notebook config
+# and the MCP tool queries. Edit this file through pull requests; never edit the
+# generated queries.
+
+version: 1
+
+defaults:
+  delay: 15m          # lake data is queryable about 15 minutes after ingestion
+  window: 1h          # each run indexes one aligned hour
+  result_vocab: default
+  entity_table: HuntEntity_SPRK
+  event_table: HuntEvent_SPRK
+
+groups:
+
+  # ---------------------------------------------------------------- raw text
+  - id: "Syslog:sshd"
+    table: Syslog
+    filter: 'ProcessName == "sshd"'
+    spark_filter: "ProcessName = 'sshd'"
+    vendor: OpenSSH
+    product: OpenSSH
+    schema: Authentication
+    engine: kql_job                 # kql_job for high-volume groups, notebook for the long tail
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", Computer, "|", SyslogMessage))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(Computer, ''), coalesce(SyslogMessage, '')), 256)"
+    text_column: SyslogMessage      # enables templates and the value classifier
+    constant_entities:              # entities taken from columns on every row
+      - {column: Computer, entity: host, role: Dvc, asim: DvcHostname}
+      - {column: HostIP, entity: ip, role: Dvc, asim: DvcIpAddr}
+    templates:
+      - id: sshd-failed-password
+        match: "Failed password for"
+        regex: 'Failed password for (?:invalid user )?(?P<TargetUsername>\S+) from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logon
+        event_result: Failure
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+      - id: sshd-accepted
+        match: "Accepted "
+        regex: 'Accepted (?:password|publickey|keyboard-interactive/pam) for (?P<TargetUsername>\S+) from (?P<SrcIpAddr>\S+) port (?P<SrcPortNumber>\d+)'
+        event_type: Logon
+        event_result: Success
+        tier: 1
+        slots:
+          TargetUsername: {entity: user, role: Target}
+          SrcIpAddr: {entity: ip, role: Src}
+          SrcPortNumber: {}
+
+  # ---------------------------------------------------------------- CEF
+  - id: "CEF:Palo Alto Networks/PAN-OS"
+    table: CommonSecurityLog
+    filter: 'DeviceVendor == "Palo Alto Networks" and DeviceProduct == "PAN-OS"'
+    spark_filter: "DeviceVendor = 'Palo Alto Networks' AND DeviceProduct = 'PAN-OS'"
+    vendor: Palo Alto
+    product: PanOS
+    schema: NetworkSession
+    engine: kql_job
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", DeviceName, "|", ReceiptTime, "|", SourceIP, "|", DestinationIP, "|", tostring(SourcePort)))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(DeviceName, ''), coalesce(ReceiptTime, ''), coalesce(SourceIP, ''), coalesce(DestinationIP, ''), coalesce(cast(SourcePort as string), '')), 256)"
+    asim_reference: "Parsers/ASimNetworkSession/Parsers/ASimNetworkSessionPaloAltoCEF.yaml"
+    event_type: {constant: EndpointNetworkSession}
+    result: {column: DeviceAction}
+    tier: 1
+    fields:
+      - {column: SourceIP, asim: SrcIpAddr, entity: ip, role: Src}
+      - {column: DestinationIP, asim: DstIpAddr, entity: ip, role: Dst}
+      - {column: SourcePort, asim: SrcPortNumber}
+      - {column: DestinationPort, asim: DstPortNumber}
+      - {column: SourceUserName, asim: SrcUsername, entity: user, role: Src}
+      - {column: DestinationUserName, asim: DstUsername, entity: user, role: Dst}
+      - {column: DeviceName, asim: DvcHostname, entity: host, role: Dvc}
+      - {column: RequestURL, asim: Url, entity: url, role: Unknown}
+      - {column: DeviceAction, asim: DvcAction}
+      - {column: Protocol, asim: NetworkProtocol}
+      # Custom string slots are mapped by their label value per vendor:
+      - {column: DeviceCustomString2, when_label: {column: DeviceCustomString2Label, equals: "Destination Zone"}, asim: DstZone}
+
+  # ---------------------------------------------------------------- custom JSON
+  - id: "AppAudit_CL:v2"
+    table: AppAudit_CL
+    filter: 'isnotempty(Properties)'
+    spark_filter: "Properties IS NOT NULL"
+    vendor: Contoso
+    product: InternalApp
+    schema: AuditEvent
+    engine: notebook
+    time_column: TimeGenerated
+    record_key: 'tostring(Properties.eventId)'
+    spark_record_key: "get_json_object(Properties, '$.eventId')"
+    event_type: {path: Properties.operation}
+    result: {path: Properties.outcome}
+    tier: 2                         # role and result rules not yet reviewed
+    fields:
+      - {path: Properties.client.addr, asim: SrcIpAddr, entity: ip, role: Src}
+      - {path: Properties.actor.upn, asim: ActorUsername, entity: user, role: Actor}
+      - {path: Properties.target.account, asim: TargetUsername, entity: user, role: Target}
+      - {path: Properties.resource.url, asim: Url, entity: url, role: Unknown}
+
+  # ---------------------------------------------------------------- raw custom table
+  - id: "Appliance_CL:raw"
+    table: Appliance_CL
+    filter: 'isnotempty(RawData)'
+    spark_filter: "RawData IS NOT NULL AND RawData <> ''"
+    vendor: Unknown
+    product: Appliance
+    schema: ""
+    engine: notebook
+    time_column: TimeGenerated
+    record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", RawData))'
+    spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(RawData, '')), 256)"
+    text_column: RawData
+    templates: []                   # nothing reviewed yet: classifier only (Tier 2)

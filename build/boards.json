@@ -1,0 +1,52 @@
+[
+ [
+  "Main.dc.html",
+  "01 How ASIM works",
+  "01-asim-model"
+ ],
+ [
+  "02-lake-limit.dc.html",
+  "02 Why ASIM stops at the lake",
+  "02-lake-limit"
+ ],
+ [
+  "03-asim-coverage.dc.html",
+  "03 ASIM coverage at scale",
+  "03-asim-coverage"
+ ],
+ [
+  "04-methods-compared.dc.html",
+  "04 Normalization methods compared",
+  "04-methods-compared"
+ ],
+ [
+  "05-discovery-pipeline.dc.html",
+  "05 Discovery pipeline",
+  "05-discovery-pipeline"
+ ],
+ [
+  "06-confidence-matrix.dc.html",
+  "06 Confidence by entity and source",
+  "06-confidence-matrix"
+ ],
+ [
+  "07-coverage-tiers.dc.html",
+  "07 Coverage tiers and drift",
+  "07-coverage-tiers"
+ ],
+ [
+  "08-ask-to-microsoft.dc.html",
+  "08 The ask to Microsoft",
+  "08-ask-to-microsoft"
+ ],
+ [
+  "09-syslog-worked-example.dc.html",
+  "09 Worked example: syslog",
+  "09-syslog-worked-example"
+ ],
+ [
+  "10-scaling-raw-sources.dc.html",
+  "10 Scaling to many raw sources",
+  "10-scaling-raw-sources"
+ ]
+]

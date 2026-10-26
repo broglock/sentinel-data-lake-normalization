@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>08 The ask to Microsoft</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#001AFF}a:hover{color:#05052F}
+</style>
+</helmet>
+<div style="width: 1080px; height: 1350px; box-sizing: border-box; display: flex; flex-direction: column; background: #FFFFFF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; overflow: hidden">
+<div style="background: #05052F; padding: 40px 56px 36px; display: flex; flex-direction: column; gap: 14px; flex: none">
+<div style="display: flex; align-items: center; gap: 14px"><svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true"><polygon points="8,0 14,0 6,28 0,28" fill="#00AAFF"></polygon><polygon points="20,0 26,0 18,28 12,28" fill="#001AFF"></polygon><polygon points="32,0 38,0 30,28 24,28" fill="#D5FE51"></polygon></svg><span style="color: #CBE9FF; font-size: 14px; letter-spacing: 2px">SENTINEL DATA LAKE NORMALIZATION · 8 OF 10</span></div>
+<h1 style="margin: 0; color: #FFFFFF; font-size: 42px; line-height: 50px; font-weight: 400">What ASIM support in the data lake would change</h1>
+<p style="margin: 0; color: #CBE9FF; font-size: 20px; line-height: 28px">Native support would replace custom work that every team hunting across third-party sources repeats today.</p>
+<div style="width: 96px; height: 6px; background: #CAFF00"></div>
+</div>
+<div style="flex: 1; min-height: 0; padding: 32px 56px 24px; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-direction: column">
+<div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #001AFF">Requested from the Sentinel product group</div>
+<div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #DCDCDD"><span style="width: 34px; height: 34px; border-radius: 17px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; flex: none">1</span><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 18px; line-height: 24px">Run ASIM parsers in lake KQL and KQL jobs</span><span style="font-size: 15px; line-height: 21px; color: #45455C">Unifying and source-specific parsers, or a lake-specific build of them.</span></div></div>
+<div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #DCDCDD"><span style="width: 34px; height: 34px; border-radius: 17px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; flex: none">2</span><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 18px; line-height: 24px">Document query-scoped functions in lake KQL</span><span style="font-size: 15px; line-height: 21px; color: #45455C">State whether let-defined functions are supported, so inlined parsers can stay readable.</span></div></div>
+<div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #DCDCDD"><span style="width: 34px; height: 34px; border-radius: 17px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; flex: none">3</span><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 18px; line-height: 24px">Lake tier for every native ASim table</span><span style="font-size: 15px; line-height: 21px; color: #45455C">So ingest-time normalization can land straight in the lake.</span></div></div>
+<div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #DCDCDD"><span style="width: 34px; height: 34px; border-radius: 17px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; flex: none">4</span><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 18px; line-height: 24px">ASIM output from filter-and-split transforms</span><span style="font-size: 15px; line-height: 21px; color: #45455C">Map fields to ASIM columns while routing data to the lake tier.</span></div></div>
+<div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #DCDCDD"><span style="width: 34px; height: 34px; border-radius: 17px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; flex: none">5</span><div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 18px; line-height: 24px">A recommended normalization pattern for the lake</span><span style="font-size: 15px; line-height: 21px; color: #45455C">Published guidance for hunting across hundreds of third-party sources.</span></div></div>
+</div>
+<div style="background: #05052F; border-radius: 6px; padding: 18px 24px; display: flex; flex-direction: column">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; font-size: 13px; letter-spacing: 1.5px; color: #CAFF00; padding-bottom: 6px"><span>CUSTOM WORK TODAY</span><span style="text-align: center">WITH THE REQUESTS</span><span>REQUEST</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid #23235A"><span style="font-size: 16px; line-height: 22px; color: #FFFFFF">Copy ASIM parser logic into every lake query and KQL job</span><span style="background: #001AFF; color: #FFFFFF; border-radius: 4px; padding: 6px 10px; font-size: 15px; text-align: center">Removed</span><span style="font-size: 14px; color: #CBE9FF">1, 2</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid #23235A"><span style="font-size: 16px; line-height: 22px; color: #FFFFFF">Sync parser YAML from the Azure-Sentinel GitHub repo</span><span style="background: #001AFF; color: #FFFFFF; border-radius: 4px; padding: 6px 10px; font-size: 15px; text-align: center">Removed</span><span style="font-size: 14px; color: #CBE9FF">1</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid #23235A"><span style="font-size: 16px; line-height: 22px; color: #FFFFFF">Per-source DCRs for the highest-volume sources</span><span style="background: #CBE9FF; color: #05052F; border-radius: 4px; padding: 6px 10px; font-size: 15px; text-align: center">Reduced</span><span style="font-size: 14px; color: #CBE9FF">3, 4</span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid #23235A"><span style="font-size: 16px; line-height: 22px; color: #FFFFFF">Entity index for sources with no parser</span><span style="background: #F1F1F3; color: #05052F; border-radius: 4px; padding: 6px 10px; font-size: 15px; text-align: center">Still needed</span><span style="font-size: 14px; color: #CBE9FF"></span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid #23235A"><span style="font-size: 16px; line-height: 22px; color: #FFFFFF">Syslog template mining</span><span style="background: #F1F1F3; color: #05052F; border-radius: 4px; padding: 6px 10px; font-size: 15px; text-align: center">Still needed</span><span style="font-size: 14px; color: #CBE9FF"></span></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid #23235A"><span style="font-size: 16px; line-height: 22px; color: #FFFFFF">Coverage and drift checks per source</span><span style="background: #F1F1F3; color: #05052F; border-radius: 4px; padding: 6px 10px; font-size: 15px; text-align: center">Still needed</span><span style="font-size: 14px; color: #CBE9FF"></span></div>
+</div>
+<div style="background: #F2F8FF; border: 1px solid #CBE9FF; border-radius: 6px; padding: 18px 22px; display: flex; gap: 16px; align-items: center">
+<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; fill: none; stroke: #001AFF; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round"><path d="M6 3 H14 L19 8 V21 H6 Z M14 3 V8 H19"></path></svg>
+<div style="font-size: 16px; line-height: 23px">Status on 16 October 2026: Sentinel's What's new page, from July 2025 to September 2026, lists no item for ASIM in the data lake or for function support in lake KQL. ASIM parser work continues on the analytics tier.</div>
+</div>
+
+</div>
+<div style="flex: none; padding: 14px 56px 18px; border-top: 1px solid #DCDCDD; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 16px; color: #45455C">
+<div style="display: flex; justify-content: space-between; gap: 24px"><span>Sources: Microsoft Learn, What's new in Microsoft Sentinel; data lake KQL documentation</span><span style="flex: none">Checked 16 October 2026</span></div>
+<div>© 2026 LevelBlue Intellectual Property. LevelBlue logo, and registered trademarks and service marks are the property of LevelBlue Intellectual Property and/or LevelBlue affiliated companies. All other marks are the property of their respective owners.</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1350}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

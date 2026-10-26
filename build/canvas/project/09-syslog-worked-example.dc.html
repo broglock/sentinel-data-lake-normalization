@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>09 Worked example: syslog</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#001AFF}a:hover{color:#05052F}
+</style>
+</helmet>
+<div style="width: 1080px; height: 1350px; box-sizing: border-box; display: flex; flex-direction: column; background: #FFFFFF; color: #05052F; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; overflow: hidden">
+<div style="background: #05052F; padding: 40px 56px 36px; display: flex; flex-direction: column; gap: 14px; flex: none">
+<div style="display: flex; align-items: center; gap: 14px"><svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true"><polygon points="8,0 14,0 6,28 0,28" fill="#00AAFF"></polygon><polygon points="20,0 26,0 18,28 12,28" fill="#001AFF"></polygon><polygon points="32,0 38,0 30,28 24,28" fill="#D5FE51"></polygon></svg><span style="color: #CBE9FF; font-size: 14px; letter-spacing: 2px">SENTINEL DATA LAKE NORMALIZATION · 9 OF 10</span></div>
+<h1 style="margin: 0; color: #FFFFFF; font-size: 42px; line-height: 50px; font-weight: 400">Worked example: Linux syslog into the entity index</h1>
+<p style="margin: 0; color: #CBE9FF; font-size: 20px; line-height: 28px">No parsing at the collector. Every step below is plain KQL that runs in the lake.</p>
+<div style="width: 96px; height: 6px; background: #CAFF00"></div>
+</div>
+<div style="flex: 1; min-height: 0; padding: 32px 56px 24px; display: flex; flex-direction: column; gap: 24px">
+
+<div style="background: #FFFFFF; border: 1px solid #DCDCDD; border-radius: 6px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; gap: 16px"><div style="font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: #001AFF">Raw lines as they land: ProcessName and SyslogMessage only</div><span style="font-size: 13px; color: #45455C">Collector adds no parsing</span></div>
+<div style="font-family: Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 22px; display: flex; flex-direction: column; gap: 2px; white-space: nowrap"><div>web-07 sshd[2214]: Failed password for invalid user <span style="background: #CBE9FF; color: #05052F; padding: 1px 3px; border-radius: 3px">admin</span> from <span style="background: #CAFF00; color: #05052F; padding: 1px 3px; border-radius: 3px">203.0.113.45</span> port 52114 ssh2</div><div style="color: #45455C">web-07 sshd[2214]: Accepted publickey for deploy from 198.51.100.20 port 40022 ssh2</div><div style="color: #45455C">web-07 sudo: deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx</div></div>
+<div style="display: flex; gap: 10px; align-items: center"><div style="display: flex; align-items: center; justify-content: center; width: 28px; flex: none"><svg width="22" height="28" viewBox="0 0 22 28" aria-hidden="true"><path d="M5 5 L16 14 L5 23" fill="none" stroke="#001AFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg></div><div style="display: flex; flex-wrap: wrap; gap: 6px"><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CBE9FF; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">TargetUsername = admin</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #CAFF00; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">SrcIpAddr = 203.0.113.45</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F2F8FF; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">EventType = Logon</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F2F8FF; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">EventResult = Failure</span><span style="display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 4px; white-space: nowrap; background: #F2F8FF; color: #05052F; font-family: Consolas, 'Liberation Mono', monospace; font-size: 14px; line-height: 20px">DvcHostname = web-07</span></div></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><div style="display: flex; gap: 10px; align-items: center"><span style="width: 28px; height: 28px; border-radius: 14px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; flex: none">1</span><span style="font-size: 18px">Find the templates</span></div><div style="background: #05052F; border-radius: 4px; padding: 12px 14px; font-family: Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 19px; color: #FFFFFF; white-space: pre">Syslog
+| where TimeGenerated &gt; ago(7d)
+| where ProcessName == "sshd"
+| reduce by SyslogMessage
+    with threshold = 0.1
+| top 20 by Count</div><div style="font-size: 14px; line-height: 19px; color: #45455C">Run per program. Test reduce on your lake; Drain3 in a notebook also works.</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><div style="display: flex; gap: 10px; align-items: center"><span style="width: 28px; height: 28px; border-radius: 14px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; flex: none">2</span><span style="font-size: 18px">Record each template once</span></div><div style="background: #05052F; border-radius: 4px; padding: 12px 14px; font-family: Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 19px; color: #FFFFFF; white-space: pre">- process: sshd
+  match: "Failed password for"
+  fields:
+    TargetUsername: 'for (?:invalid user )?(\S+) from'
+    SrcIpAddr: 'from (\S+) port'
+  EventType: Logon
+  EventResult: Failure</div><div style="font-size: 14px; line-height: 19px; color: #45455C">One registry entry per template, kept in Git with the generator.</div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><div style="display: flex; gap: 10px; align-items: center"><span style="width: 28px; height: 28px; border-radius: 14px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; flex: none">3</span><span style="font-size: 18px">Generator writes plain KQL for each template</span></div><div style="background: #05052F; border-radius: 4px; padding: 12px 14px; font-family: Consolas, 'Liberation Mono', monospace; font-size: 12.5px; line-height: 19px; color: #FFFFFF; white-space: pre">Syslog
+| where TimeGenerated &gt; ago(1h)
+| where ProcessName == "sshd" and SyslogMessage has "Failed password for"
+| extend TargetUsername = extract(@"for (?:invalid user )?(\S+) from", 1, SyslogMessage),
+         SrcIpAddr = extract(@"from (\S+) port", 1, SyslogMessage)
+| project TimeGenerated, SourceTable = "Syslog", EventVendor = "OpenSSH",
+          EventType = "Logon", EventResult = "Failure", SrcIpAddr,
+          TargetUsername, DvcHostname = Computer</div><div style="font-size: 14px; line-height: 19px; color: #45455C">One block per template, unioned into one KQL job. No functions, so it runs in lake KQL. Output columns use ASIM names.</div></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><div style="display: flex; gap: 10px; align-items: center"><span style="width: 28px; height: 28px; border-radius: 14px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; flex: none">4</span><span style="font-size: 18px">Catch every unmatched line</span></div><div style="background: #05052F; border-radius: 4px; padding: 12px 14px; font-family: Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 19px; color: #FFFFFF; white-space: pre">Syslog
+| where TimeGenerated &gt; ago(1h)
+| where not(SyslogMessage has_any
+    ("Failed password for", "Accepted"))
+| extend Ip = extract_all(
+    @"\b(\d{1,3}(?:\.\d{1,3}){3})\b", SyslogMessage)
+| mv-expand SrcIpAddr = Ip to typeof(string)</div><div style="font-size: 14px; line-height: 19px; color: #45455C">Unmatched lines still give up their IPs, as Tier 2 rows.</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0"><div style="display: flex; gap: 10px; align-items: center"><span style="width: 28px; height: 28px; border-radius: 14px; background: #001AFF; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 15px; flex: none">5</span><span style="font-size: 18px">Hunt the index, not the raw table</span></div><div style="background: #05052F; border-radius: 4px; padding: 12px 14px; font-family: Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 19px; color: #FFFFFF; white-space: pre">HuntIndex_KQL_CL
+| where SrcIpAddr == "203.0.113.45"
+| summarize Events = count(),
+    Sources = make_set(SourceTable)
+    by EventType, EventResult</div><div style="font-size: 14px; line-height: 19px; color: #45455C">The KQL job writes HuntIndex_KQL_CL on a schedule. Analysts and the data lake MCP query this one table.</div></div>
+</div>
+
+</div>
+<div style="flex: none; padding: 14px 56px 18px; border-top: 1px solid #DCDCDD; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 16px; color: #45455C">
+<div style="display: flex; justify-content: space-between; gap: 24px"><span>Sources: Microsoft Learn, KQL reduce, extract, extract_all and data lake KQL jobs; LevelBlue design</span><span style="flex: none">Checked 16 October 2026</span></div>
+<div>© 2026 LevelBlue Intellectual Property. LevelBlue logo, and registered trademarks and service marks are the property of LevelBlue Intellectual Property and/or LevelBlue affiliated companies. All other marks are the property of their respective owners.</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1350}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
