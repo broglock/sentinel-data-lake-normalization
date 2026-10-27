@@ -217,7 +217,7 @@ def clean_event(name: str, col, nulls: list):
 
 def project_event(df: DataFrame, mapped: dict, cfg: dict) -> DataFrame:
     cols = []
-    for name, typ in cfg["event_columns"]:
+    for name, typ in cfg["event_occ_columns"]:
         spark_type = {"string": "string", "int": "int", "datetime": "timestamp"}[typ]
         if name in ("EventStartTime", "SourceRecordKey"):
             cols.append(F.col(name))
@@ -257,6 +257,16 @@ def event_rows(base: DataFrame, group: dict, cfg: dict) -> DataFrame | None:
     for p in parts[1:]:
         out = out.unionByName(p)
     return out
+
+
+def event_rollup(ev: DataFrame, cfg: dict) -> DataFrame:
+    """HuntEvent: one row per hour and unique combination of the mapped ASIM fields, with a count.
+    The source port is not a key (it differs on almost every connection)."""
+    n = int(cfg.get("sample_keys", 3))
+    return (ev.groupBy(F.date_trunc("hour", F.col("EventStartTime")).alias("Hour"), *cfg["event_keys"])
+              .agg(F.count(F.lit(1)).alias("Count"), F.min("EventStartTime").alias("FirstSeen"),
+                   F.max("EventStartTime").alias("LastSeen"),
+                   F.slice(F.array_sort(F.collect_set("SourceRecordKey")), 1, n).alias("SampleKeys")))
 
 
 def rollup(occ: DataFrame, cfg: dict) -> DataFrame:
@@ -329,7 +339,8 @@ def run(spark, provider, cfg: dict, now: datetime | None = None) -> dict:
         counts[group["id"]] = ents.count()
         ev = event_rows(base, group, cfg)
         if ev is not None:
-            provider.save_as_table(finish(ev, cfg["event_columns"]), EVENT_TABLE, write_options={"mode": "append"})
+            provider.save_as_table(finish(event_rollup(ev, cfg), cfg["event_columns"]), EVENT_TABLE,
+                                   write_options={"mode": "append"})
         base.unpersist()
     return counts
 

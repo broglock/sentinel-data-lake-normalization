@@ -94,23 +94,25 @@ def _user_short(u: str) -> str:
 
 
 def auth_events(evs: list[dict], user: str, result: str = "*", days: float = 7) -> list[dict]:
-    """Sign-ins from HuntEvent (Tier 1 sources), matched on the short form of the user."""
+    """Sign-ins from HuntEvent (Tier 1 sources, hourly rollup), matched on the short form of the user.
+    One row per hour, source, user, source IP and result, with Count."""
     short = _user_short(user.strip())
     since = _since(days)
     out = []
     for e in evs:
-        if e["EventStartTime"] <= since:
+        if e["Hour"] <= since:
             continue
         if not (e["EventType"] in ("Logon", "Logoff") or e["EventSchema"] == "Authentication"):
             continue
         u = e.get("TargetUsername") or e.get("ActorUsername") or ""
         if _user_short(u) != short or (result != "*" and e["EventResult"] != result):
             continue
-        out.append({"EventStartTime": _iso(e["EventStartTime"]), "SourceTable": e["SourceTable"],
-                    "SourceGroup": e["SourceGroup"], "EventType": e["EventType"], "EventResult": e["EventResult"],
-                    "User": u, "SrcIpAddr": e.get("SrcIpAddr") or "", "SourceRecordKey": e["SourceRecordKey"],
-                    "_t": e["EventStartTime"]})
-    out.sort(key=lambda r: r["_t"], reverse=True)
+        keys = list(e["SampleKeys"] or [])
+        out.append({"EventStartTime": _iso(e["FirstSeen"]), "LastSeen": _iso(e["LastSeen"]), "Count": int(e["Count"]),
+                    "SourceTable": e["SourceTable"], "SourceGroup": e["SourceGroup"], "EventType": e["EventType"],
+                    "EventResult": e["EventResult"], "User": u, "SrcIpAddr": e.get("SrcIpAddr") or "",
+                    "SampleKeys": keys, "SourceRecordKey": (keys or [""])[0], "_t": e["FirstSeen"]})
+    out.sort(key=lambda r: (r["_t"], r["SourceGroup"], r["User"], r["SrcIpAddr"]), reverse=True)
     for r in out:
         r.pop("_t")
     return out[:500]
@@ -121,16 +123,16 @@ def network_events(evs: list[dict], ip: str, days: float = 7) -> list[dict]:
     since = _since(days)
     agg: dict[tuple, dict] = {}
     for e in evs:
-        if e["EventStartTime"] < since or ip not in (e.get("SrcIpAddr"), e.get("DstIpAddr")):
+        if e["Hour"] <= since or ip not in (e.get("SrcIpAddr"), e.get("DstIpAddr")):
             continue
         if e.get("EventSchema") != "NetworkSession" and not e.get("DstIpAddr"):
             continue
         k = (e["SourceGroup"], e["SrcIpAddr"], e["DstIpAddr"], e.get("DstPortNumber"))
         a = agg.setdefault(k, {"SourceGroup": k[0], "SrcIpAddr": k[1], "DstIpAddr": k[2], "DstPortNumber": k[3],
-                               "Sessions": 0, "FirstSeen": e["EventStartTime"], "LastSeen": e["EventStartTime"],
+                               "Sessions": 0, "FirstSeen": e["FirstSeen"], "LastSeen": e["LastSeen"],
                                "Actions": set(), "Results": set()})
-        a["Sessions"] += 1
-        a["FirstSeen"] = min(a["FirstSeen"], e["EventStartTime"]); a["LastSeen"] = max(a["LastSeen"], e["EventStartTime"])
+        a["Sessions"] += int(e["Count"])
+        a["FirstSeen"] = min(a["FirstSeen"], e["FirstSeen"]); a["LastSeen"] = max(a["LastSeen"], e["LastSeen"])
         if e.get("DvcAction"):
             a["Actions"].add(e["DvcAction"])
         if e.get("EventResult"):

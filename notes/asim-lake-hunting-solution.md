@@ -97,7 +97,7 @@ Two platform behaviours change how the index is written. Output columns named `T
 
 ## Target model: two lake tables
 
-Every source, parsed or not, writes into the same two tables. `HuntEntity_SPRK` is an hourly rollup: one row per hour, source group, entity value, role and result, with a count. It covers all sources. `HuntEvent_SPRK` holds one ASIM-shaped row per event for sources mapped at Tier 1, including Tier 1 templates on text sources. Names use the notebook lake suffix; KQL jobs writing to System tables produce `_KQL` instead.
+Every source, parsed or not, writes into the same two tables. `HuntEntity_SPRK` is an hourly rollup: one row per hour, source group, entity value, role and result, with a count. It covers all sources. `HuntEvent_SPRK` holds ASIM-shaped rows for sources mapped at Tier 1, including Tier 1 templates on text sources, rolled up the same way: one row per hour and unique combination of the mapped fields, with a count. Names use the notebook lake suffix; KQL jobs writing to System tables produce `_KQL` instead.
 
 Inside each job the rules first produce one row per entity occurrence. The rollup then groups those rows by hour. At 1 TB/day this keeps HuntEntity at a few percent of the occurrence count instead of roughly the size of the raw data (see `notes/cost-model-1tb-day.md`).
 
@@ -123,12 +123,16 @@ Inside each job the rules first produce one row per entity occurrence. The rollu
 
 Each job also writes job-count rows into HuntEntity, because a KQL job has one output table. These rows have `EntityType = "_stats"`, one of three roles and the number in `Count`: `RowsRead` (raw rows the group read in the hour), `RowsWithEntity` (raw rows that produced at least one entity) and `RowsTemplateMatched` (raw rows a template matched, text groups only). The docs call these rows HuntJobStats. Notebook 03 builds the coverage report from them without reading any source table, and the hunt tools skip them.
 
-### HuntEvent: ASIM-shaped rows for Tier 1 sources
+### HuntEvent: ASIM-shaped rows for Tier 1 sources, hourly rollup
+
+Each job first builds one row per event with the ASIM columns below, then groups them by hour and every mapped column except the source port, which differs on almost every connection. Repeated sign-ins and sessions with the same user, addresses, port, action and result become one row. The row carries `Hour`, `FirstSeen`, `LastSeen`, `Count` and up to three `SampleKeys`, as in HuntEntity.
+
 
 | Group | Columns |
 | --- | --- |
-| Event | EventStartTime, SourceTable, SourceGroup, SourceRecordKey, EventVendor, EventProduct, EventSchema, EventType, EventResult, EventResultDetails, EventSeverity |
-| Network | SrcIpAddr, SrcPortNumber, DstIpAddr, DstPortNumber, NetworkProtocol, DvcAction |
+| Rollup | Hour, FirstSeen, LastSeen, Count, SampleKeys |
+| Event | SourceTable, SourceGroup, EventVendor, EventProduct, EventSchema, EventType, EventResult, EventResultDetails, EventSeverity |
+| Network | SrcIpAddr, DstIpAddr, DstPortNumber, NetworkProtocol, DvcAction (SrcPortNumber is mapped but not kept) |
 | Device | SrcHostname, DstHostname, DvcHostname, DvcIpAddr, DvcDomain |
 | User | ActorUsername, ActorUsernameType, ActorUserId, ActorUserIdType, TargetUsername, TargetUsernameType |
 | Web and DNS | Url, DstDomain, HttpUserAgent, DnsQuery |
@@ -229,7 +233,7 @@ Queries and agent instructions: `solution-kit/mcp/tools.yaml`.
 
 Agent instructions: start every hunt with hunt_value or hunt_entity; report how many sources matched at each tier; treat Role = Unknown as unknown; use auth_events or network_events only when a result or direction is needed and say only Tier 1 sources can answer; fetch originals with pivot_raw before quoting; run search_raw over the tables named by coverage before saying a value was not seen.
 
-Each grammar group defines its `SourceRecordKey` in the registry (source event ID, or a SHA-256 of the event time formatted to milliseconds and the raw columns). A HuntEvent row carries its own key. A HuntEntity row covers up to an hour, so it carries up to three keys in `SampleKeys`. The generic `pivot_raw` tool filters the raw table to `FirstSeen` to `LastSeen` (one second either side) plus the entity value; with a group's key expression the app filters on the sampled keys instead and returns exactly those rows. Rows that share a sampled key came from the same event, which is how the timeline and "seen with it" views find other entities without per-event rows.
+Each grammar group defines its `SourceRecordKey` in the registry (source event ID, or a SHA-256 of the event time formatted to milliseconds and the raw columns). HuntEntity and HuntEvent rows each cover up to an hour, so each carries up to three keys in `SampleKeys`. The generic `pivot_raw` tool filters the raw table to `FirstSeen` to `LastSeen` (one second either side) plus the entity value; with a group's key expression the app filters on the sampled keys instead and returns exactly those rows. Rows that share a sampled key came from the same event, which is how the timeline and "seen with it" views find other entities without per-event rows.
 
 ## Coverage, QA and drift
 

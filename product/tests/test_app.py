@@ -216,3 +216,23 @@ def test_generated_kql_parses(client, tmp_path):
     r = subprocess.run([node, str(Path(__file__).parent / "kql_check.js"), "--schemas", str(tmp_path / "schemas.json"), *kqls],
                        capture_output=True, text=True, env={**os.environ, "KUSTO_LIB": lib})
     assert r.returncode == 0, r.stdout[-3000:]
+
+
+# ------------------------------------------------------------------ HuntEvent rollup
+def test_huntevent_rollup_collapses_repeats():
+    from datetime import datetime, timezone
+    from app.engine.indexer import event_rollup
+    t = datetime(2026, 10, 27, 9, 0, tzinfo=timezone.utc)
+    base = {"SourceTable": "SecurityEvent", "SourceGroup": "g", "EventVendor": "", "EventProduct": "",
+            "EventSchema": "Authentication", "EventType": "Logon", "EventResult": "Failure",
+            "SrcIpAddr": "203.0.113.45", "TargetUsername": "jsmith", "MappingTier": 1}
+    evs = [{**base, "EventStartTime": t.replace(minute=m), "SourceRecordKey": f"k{m}", "SrcPortNumber": 40000 + m}
+           for m in (1, 2, 3, 4)]
+    evs.append({**base, "EventStartTime": t.replace(minute=5), "SourceRecordKey": "k5", "EventResult": "Success"})
+    from app.kit.generate import EVENT_OCC_COLUMNS
+    evs = [{c: e.get(c, "" if typ == "string" else None) for c, typ in EVENT_OCC_COLUMNS} for e in evs]
+    rows = event_rollup(evs)
+    fail = [r for r in rows if r["EventResult"] == "Failure"]
+    assert len(rows) == 2 and len(fail) == 1
+    assert fail[0]["Count"] == 4 and fail[0]["SampleKeys"] == ["k1", "k2", "k3"]   # source port is not a key
+    assert fail[0]["FirstSeen"].minute == 1 and fail[0]["LastSeen"].minute == 4

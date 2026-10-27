@@ -20,8 +20,8 @@ router = APIRouter()
 PROTOCOL = "2025-06-18"
 
 INSTRUCTIONS = (
-    "Hunt across every log source through the normalized index (an hourly rollup of entity counts, plus "
-    "per-event rows for Tier 1 sources). Start with hunt_value, report how many "
+    "Hunt across every log source through the normalized index (hourly rollups of entity counts and of "
+    "Tier 1 events). Start with hunt_value, report how many "
     "sources matched and at which tier, treat Role=Unknown as unknown, and fetch originals with pivot_raw before "
     "quoting raw fields. Run search_raw on tables listed by coverage before saying a value was not seen. "
     "For onboarding: list_sources, then propose_mapping, adjust the decisions, preview_mapping until extraction "
@@ -36,7 +36,7 @@ TOOLS: list[dict] = [
     {"name": "hunt_entity", "role": "viewer", "description": "One entity type, optionally in one role (Src, Dst, Actor, Target, Dvc, Unknown or *), across every source.",
      "inputSchema": {"type": "object", "properties": {"entity_type": {"type": "string", "enum": ["ip", "host", "user", "hash", "url", "domain", "email"]},
                                                       "value": S, "role": S, "days": N}, "required": ["entity_type", "value"]}},
-    {"name": "auth_events", "role": "viewer", "description": "Sign-in events for a user (any format) with result and source IP, from Tier 1 sources.",
+    {"name": "auth_events", "role": "viewer", "description": "Sign-ins for a user (any format) with result and source IP, from Tier 1 sources; repeated sign-ins in an hour are one row with Count.",
      "inputSchema": {"type": "object", "properties": {"user": S, "result": {"type": "string", "enum": ["Success", "Failure", "*"]}, "days": N}, "required": ["user"]}},
     {"name": "network_events", "role": "viewer", "description": "Network sessions involving an IP, with direction, port and device action.",
      "inputSchema": {"type": "object", "properties": {"ip": S, "days": N}, "required": ["ip"]}},

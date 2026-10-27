@@ -16,7 +16,7 @@ from app.config import APP_DIR, settings
 from app.engine import guide, miner
 from app.engine.indexer import index_parts
 from app.kit import asim_expand
-from app.kit.generate import (ASIM_OUTPUT_FIELDS, ENTITY_COLUMNS, EVENT_COLUMNS, build_entity_job, build_entity_query,
+from app.kit.generate import (ASIM_OUTPUT_FIELDS, ENTITY_COLUMNS, EVENT_COLUMNS, EVENT_OCC_COLUMNS, build_entity_job, build_entity_query,
                               build_event_job, build_event_query, complete_group, engine_of, notebook_config,
                               plan_jobs, slug)
 from app.providers.base import Provider
@@ -212,7 +212,7 @@ class Core:
             "presets": [{"value": k, **v} for k, v in guide.PRESETS.items()],
             "entityChoices": guide.ENTITY_CHOICES, "roleChoices": guide.ROLE_CHOICES,
             "asimByEntityRole": {f"{k[0]}:{k[1]}": v for k, v in guide.ASIM_BY_ENTITY_ROLE.items()},
-            "asimFields": [c for c, _ in EVENT_COLUMNS if c not in ("EventStartTime", "SourceRecordKey", "SourceTable",
+            "asimFields": [c for c, _ in EVENT_OCC_COLUMNS if c not in ("EventStartTime", "SourceRecordKey", "SourceTable",
                                                                    "SourceGroup", "MappingTier")],
             "cards": cards, "textColumn": text_col, "kvSource": kv_share > 0,
             "templates": [guide.template_card(t, preset) for t in tpls] if text_col and not kv_share else [],

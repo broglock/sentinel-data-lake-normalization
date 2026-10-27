@@ -204,8 +204,8 @@ class AzureProvider(Provider):
 
     def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None,
               last_time: str = "") -> list[dict]:
-        """Original rows behind an index row. A HuntEvent row or a SampleKeys entry gives a record
-        key; otherwise the HuntEntity row's FirstSeen..LastSeen range and value are used."""
+        """Original rows behind an index row. A SampleKeys entry (HuntEntity or HuntEvent row) gives a
+        record key; otherwise the row's FirstSeen..LastSeen range and value are used."""
         if not TABLE_NAME.match(table):
             raise ValueError("bad table name")
         keys = [k for k in record_key.split(",") if k][:10]

@@ -17,9 +17,9 @@ This matters more now that hunts start from an AI agent. The Sentinel data lake 
 My approach is to do the normalization work once, ahead of time, and store the result in the lake. Scheduled lake jobs read every source table and write two tables:
 
 - HuntEntity holds one row per entity, per hour, per source and role (an IP, a user, a host, a URL, a hash), with its type, its role (source, destination, actor, target, device), a lowercase join value, a count, first and last seen times, and a few sample record keys. Rolling up by the hour keeps the table small enough to search a full year cheaply.
-- HuntEvent holds one row per event, with ASIM field names such as `SrcIpAddr`, `TargetUsername` and `EventResult`, for sources mapped well enough to trust.
+- HuntEvent holds sign-ins, network sessions and other events with ASIM field names such as `SrcIpAddr`, `TargetUsername` and `EventResult`, for sources mapped well enough to trust. It is rolled up by the hour too: repeated events with the same user, addresses, result and action become one row with a count.
 
-Every HuntEvent row keeps a pointer back to the original record, and every HuntEntity row names the source table and hour. The agent searches the index, then pivots to the raw rows when it needs the full detail.
+Every row in both tables names the source table and hour and keeps a few sample record keys that point back to the original records. The agent searches the index, then pivots to the raw rows when it needs the full detail.
 
 ![With the index, one query replaces five](img/01-before-after.png)
 
@@ -56,7 +56,7 @@ A mapping is decided once. After approval, the only recurring work for a source 
 
 ![Hundreds of sources, one index, one set of field names](img/03-architecture.png)
 
-How to read it: the top row runs left to right. Source tables of every shape feed the index builders. Approved groups run in one KQL job per source table; only groups still under review run in the lake notebook. Both write the two index tables that the agent and analysts query: HuntEntity holds hourly entity counts plus each job's row counts, and HuntEvent holds one row per Tier 1 event. Every index row carries sample record keys, so a hit is one pivot from the raw events. The bottom row is the control loop: notebook 01 reads only new or changed tables and drifting groups and proposes mappings, analysts approve them in the registry, the registry generates the builders, and notebook 03 measures coverage from the job counts. The note on the right is the drift rule that sends an approved group back to notebook 01.
+How to read it: the top row runs left to right. Source tables of every shape feed the index builders. Approved groups run in one KQL job per source table; only groups still under review run in the lake notebook. Both write the two index tables that the agent and analysts query: HuntEntity holds hourly entity counts plus each job's row counts, and HuntEvent holds hourly counts of Tier 1 events with ASIM field names. Every index row carries sample record keys, so a hit is one pivot from the raw events. The bottom row is the control loop: notebook 01 reads only new or changed tables and drifting groups and proposes mappings, analysts approve them in the registry, the registry generates the builders, and notebook 03 measures coverage from the job counts. The note on the right is the drift rule that sends an approved group back to notebook 01.
 
 ## One question, five sources
 
@@ -82,7 +82,7 @@ How to read it: the top row runs left to right, then the flow turns down at the 
 
 ## Cost at 1 TB a day
 
-At 1 TB a day of lake ingestion, the index adds about $830 to $890 a month on top of the lake's own cost for the raw data. That lake cost is about $6,080 a month at this volume: $4,500 to ingest it ($0.05 per GB ingestion plus $0.10 per GB data processing) and $1,580 to store it for a year. The index figure covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of it is the KQL jobs and HuntEvent storage. The notebooks cost under $150 a month because they only touch new, changed and unreviewed sources. The figures use Microsoft's published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions are in the project's [GitHub repository](https://github.com/broglock/sentinel-data-lake-normalization), along with a walkthrough demo of the daily workflow.
+At 1 TB a day of lake ingestion, the index adds about $440 to $490 a month on top of the lake's own cost for the raw data. That lake cost is about $6,080 a month at this volume: $4,500 to ingest it ($0.05 per GB ingestion plus $0.10 per GB data processing) and $1,580 to store it for a year. The index figure covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of it is the KQL jobs, which read each new hour of data once. The notebooks cost under $150 a month because they only touch new, changed and unreviewed sources. The figures use Microsoft's published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions are in the project's [GitHub repository](https://github.com/broglock/sentinel-data-lake-normalization), along with a walkthrough demo of the daily workflow.
 
 ## Limits
 

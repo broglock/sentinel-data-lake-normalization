@@ -9,7 +9,7 @@ My approach is to normalize once, ahead of time, into a hunt index in the lake:
 - Two more notebooks propose mappings for new or changed sources and track coverage, so format changes get caught.
 - An AI agent using the Sentinel data lake MCP server searches one set of ASIM field names instead of hundreds of tables.
 
-At 1 TB a day the index adds about $830 to $890 a month on top of the lake's own ingestion and storage cost for the raw data. It has been deployed and run in my test tenant.
+At 1 TB a day the index adds about $440 to $490 a month on top of the lake's own ingestion and storage cost for the raw data. It has been deployed and run in my test tenant.
 
 The design, solution kit, cost model, a browser walkthrough demo and a short video are all on GitHub.
 

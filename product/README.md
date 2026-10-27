@@ -140,7 +140,7 @@ Agents can draft and submit mappings. They cannot make anything live: approval s
 | Check | Result |
 |---|---|
 | `python -m pytest tests` | 50 tests: the API tests and the browser tests in tests/test_ui.py (Home, role-based navigation, Hunt, the full onboarding flow, Approve, validation) pass: engine rules, the onboarding flow, drift and noise exclusion, role enforcement, MCP, live provider requests against a mocked Azure, and every generated KQL job and MCP query parsed with Microsoft's Kusto.Language library |
-| `python tests/parity_spark.py` | The in-app engine and the lake notebook (Spark) produce the same 8,951 HuntEntity rows (hourly rollup and `_stats` rows, counts and sample keys included) and the same 2,370 HuntEvent rows from the demo week |
+| `python tests/parity_spark.py` | The in-app engine and the lake notebook (Spark) produce the same HuntEntity rows (hourly rollup and `_stats` rows) and HuntEvent rows (hourly rollup), every column including counts and sample keys, from the demo week (about 8,900 and 2,400 rows) |
 | Bicep | `main.bicep` and `roles.bicep` compile with Bicep 0.48.1 |
 | Deploy scripts | `deploy.ps1` parses with PowerShell 7.4; `deploy.sh` passes `bash -n` |
 

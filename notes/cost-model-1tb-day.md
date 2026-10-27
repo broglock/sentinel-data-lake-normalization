@@ -1,6 +1,6 @@
 # Cost model at 1 TB/day
 
-26 October 2026, revised 27 October 2026 for change-driven notebooks and the data processing meter. A planning model, not a measurement. Prices are the Microsoft preview list prices in USD for East US: data lake query $0.005 per GB analyzed, advanced data insights (notebooks) $0.15 per compute hour, lake storage $0.026 per GB per month, lake ingestion $0.05 per GB plus data processing $0.10 per GB ($0.15 per GB in total for data going into lake-only tables, confirmed against a production tenant's billing; data processing was free during the preview). Confirm current regional prices on the Sentinel pricing page before quoting a customer. 1 TB = 1,000 GB, 30-day month.
+26 October 2026, revised 27 October 2026 for change-driven notebooks, the data processing meter and the HuntEvent rollup. A planning model, not a measurement. Prices are the Microsoft preview list prices in USD for East US: data lake query $0.005 per GB analyzed, advanced data insights (notebooks) $0.15 per compute hour, lake storage $0.026 per GB per month, lake ingestion $0.05 per GB plus data processing $0.10 per GB ($0.15 per GB in total for data going into lake-only tables, confirmed against a production tenant's billing; data processing was free during the preview). Confirm current regional prices on the Sentinel pricing page before quoting a customer. 1 TB = 1,000 GB, 30-day month.
 
 ## Billing basis
 
@@ -8,7 +8,7 @@
 - Notebooks: compute hours = vCores in the pool x time the job runs. Pools of 12, 32 and 80 vCores (an older Learn page lists 4, 8 and 16).
 - Storage: billed on compressed size, 6:1.
 
-**Current figure: about $830 to $890 a month at 1 TB/day** (change-driven notebooks, hourly entity rollup, one year of index storage). This is what the index adds on top of the lake's own cost for the raw data, about $6,080 a month at this volume ($4,500 ingestion at $0.15 per GB, $1,580 for one year of storage). The sections below show how the design got there: the original always-on notebooks, the index size problem, the rollup, then the change-driven notebooks.
+**Current figure: about $440 to $490 a month at 1 TB/day** (change-driven notebooks, hourly rollup of both index tables, one year of index storage). This is what the index adds on top of the lake's own cost for the raw data, about $6,080 a month at this volume ($4,500 ingestion at $0.15 per GB, $1,580 for one year of storage). The sections below show how the design got there: the original always-on notebooks, the index size problem, the rollup, then the change-driven notebooks.
 
 ## Assumptions
 
@@ -72,7 +72,7 @@ Store one HuntEntity row per (hour, EntityType, ValueNorm, Role, SourceGroup) wi
 | One hunt over a year of the rollup | about $33 |
 | Pivot to raw | scan only the matched table and hours |
 
-HuntEvent stays per event but should be limited to the sources and schemas analysts actually query in ASIM form, or rolled up the same way.
+HuntEvent is rolled up the same way: one row per hour and unique combination of the mapped ASIM fields (user, source and destination IP, destination port, action, result and so on), with Count, FirstSeen, LastSeen and sample keys. The source port is not kept, because it differs on almost every connection. Repeated sign-ins and sessions collapse into one row. The model assumes unique combinations are at most 10% of Tier 1 events (firewall sessions are usually below that): 70 million rows a day, about 28 GB uncompressed, instead of 700 million rows and 280 GB.
 
 The 2% figure is the assumption to test first: measure distinct tuples per hour on real data.
 
@@ -96,12 +96,12 @@ Assumptions for steady state: 95% of volume in approved groups (KQL jobs), 5% un
 | Notebook 01, new and changed sources only | 12 vCores, 10 to 20 min daily = 60 to 120 compute hours | $9 to $18 |
 | Notebook 03, from job counts | 12 vCores, 5 min daily = 30 compute hours | $5 |
 | HuntEntity rollup storage, one year | | $28 |
-| HuntEvent storage, one year, every Tier 1 event (280 GB/day uncompressed) | | $443 |
-| **Total** | | **about $830 to $890** |
+| HuntEvent rollup storage, one year (28 GB/day uncompressed, 10% of Tier 1 events) | | $44 |
+| **Total** | | **about $440 to $490** |
 
-Compared with the original design with the rollup ($1,040 to $1,900), notebook compute falls from $306 to $1,170 a month to $79 to $131. HuntEvent storage is now the largest item; limiting HuntEvent to the schemas analysts query in ASIM form (for example authentication and network sessions) is the next saving.
+Compared with the original design with the rollup ($1,040 to $1,900), notebook compute falls from $306 to $1,170 a month to $79 to $131. Rolling up HuntEvent cuts its storage from $443 to $44 a month. The KQL jobs are now the largest item; they scan each new hour once and cannot be reduced further without indexing less. The 10% HuntEvent ratio is the next assumption to measure on real data.
 
-Not included: the raw data's own lake cost (about $4,500/month ingestion and $1,580/month storage), lake ingestion and processing on index writes, if charged (about $1,340/month for 298 GB/day at $0.15 per GB), and hunts against the index. During onboarding waves, when many sources are unreviewed at once, notebook 02 costs move back toward the original figures until the new groups are approved.
+Not included: the raw data's own lake cost (about $4,500/month ingestion and $1,580/month storage), lake ingestion and processing on index writes, if charged (about $210/month for 46 GB/day at $0.15 per GB), and hunts against the index. During onboarding waves, when many sources are unreviewed at once, notebook 02 costs move back toward the original figures until the new groups are approved.
 
 ## Controls
 

@@ -57,7 +57,7 @@ STATS_ROLES = ("RowsRead", "RowsWithEntity", "RowsTemplateMatched")
 Count = raw rows read, raw rows with at least one entity, raw rows matched by a template.
 Notebook 03 builds the coverage report from these rows without reading source tables."""
 
-EVENT_COLUMNS = [
+EVENT_OCC_COLUMNS = [
     ("EventStartTime", "datetime"), ("SourceTable", "string"), ("SourceGroup", "string"),
     ("SourceRecordKey", "string"), ("EventVendor", "string"), ("EventProduct", "string"),
     ("EventSchema", "string"), ("EventType", "string"), ("EventResult", "string"),
@@ -73,6 +73,17 @@ EVENT_COLUMNS = [
     ("ActingProcessName", "string"), ("TargetProcessName", "string"), ("TargetProcessCommandLine", "string"),
     ("DstZone", "string"), ("MappingTier", "int"),
 ]
+"""One row per Tier 1 event with ASIM columns: the intermediate shape inside every event job."""
+
+EVENT_DROP = ("EventStartTime", "SourceRecordKey", "SrcPortNumber")
+EVENT_KEYS = [c for c, _ in EVENT_OCC_COLUMNS if c not in EVENT_DROP]
+EVENT_COLUMNS = ([("Hour", "datetime"), ("FirstSeen", "datetime"), ("LastSeen", "datetime")] +
+                 [(c, t) for c, t in EVENT_OCC_COLUMNS if c not in EVENT_DROP] +
+                 [("Count", "long"), ("SampleKeys", "dynamic")])
+"""HuntEvent: one row per hour and unique combination of the mapped ASIM fields (who, from where,
+to where, what result), with a count, first and last seen times and up to SAMPLE_KEYS record keys.
+Repeated sign-ins and sessions collapse into one row. The source port is left out because it is
+different on almost every connection and would stop the rollup from collapsing anything."""
 NULL_OF = {"string": '""', "int": "int(null)", "long": "long(null)", "datetime": "datetime(null)",
            "dynamic": "dynamic([])"}
 CAST_OF = {"string": "tostring", "int": "toint", "long": "tolong", "datetime": "todatetime",
@@ -437,6 +448,12 @@ def build_entity_job(groups: list[dict], defaults: dict, vocab: dict) -> str:
             "union " + ", ".join(f"{fn_name(g)}()" for g in groups) + "\n" + finish_entity() + "\n")
 
 
+EVENT_ROLLUP = ("| summarize Count = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),\n"
+                f"            SampleKeys = make_set(SourceRecordKey, {SAMPLE_KEYS})\n"
+                "    by Hour = bin(EventStartTime, 1h), " + ", ".join(EVENT_KEYS) + "\n"
+                "| project " + ", ".join(c for c, _ in EVENT_COLUMNS) + "\n")
+
+
 def build_entity_query(group: dict, defaults: dict, vocab: dict) -> str:
     """The HuntEntity job query for a single group (preview, validation, single-group jobs)."""
     return build_entity_job([group], defaults, vocab)
@@ -455,7 +472,7 @@ def _clean_event(name: str, expr: str, nulls: str) -> str:
 
 def _event_projection(mapped: dict) -> str:
     cols = []
-    for name, typ in EVENT_COLUMNS:
+    for name, typ in EVENT_OCC_COLUMNS:
         if name in ("EventStartTime", "SourceRecordKey"):
             cols.append(name)
         elif name in mapped:
@@ -501,7 +518,7 @@ def event_blocks(group: dict, vocab: dict) -> list[str]:
         mapped, ext = dict(consts), []
         for name, slot in (t.get("slots") or {}).items():
             col = slot_asim(slot or {})
-            if col and col in dict(EVENT_COLUMNS) and name in idx:
+            if col and col in dict(EVENT_OCC_COLUMNS) and name in idx:
                 ext.append(f"_t_{name} = extract({rx(plain)}, {idx[name]}, {text})")
                 mapped[col] = _clean_event(col, f"_t_{name}", nulls)
         mapped.update(common, EventType=q(t.get("event_type", "")), EventResult=q(t.get("event_result", "")))
@@ -528,7 +545,7 @@ def build_event_job(groups: list[dict], defaults: dict, vocab: dict) -> str | No
     if not fns:
         return None
     return (job_header([g for g, _ in fns], defaults) + "".join(f for _, f in fns) +
-            "union " + ", ".join(f"{fn_name(g)}_ev()" for g, _ in fns) + "\n")
+            "union " + ", ".join(f"{fn_name(g)}_ev()" for g, _ in fns) + "\n" + EVENT_ROLLUP)
 
 
 def build_event_query(group: dict, defaults: dict, vocab: dict) -> str | None:
@@ -552,11 +569,12 @@ def notebook_config(groups: list[dict], vocab: dict) -> dict:
             plain, idx = numbered_regex(t["regex"])
             tpl.append({**t, "regex_plain": plain, "group_index": idx})
         ev = [{"id": t["id"], "columns": {slot_asim(s or {}): name for name, s in (t.get("slots") or {}).items()
-                                           if slot_asim(s or {}) in dict(EVENT_COLUMNS)}}
+                                           if slot_asim(s or {}) in dict(EVENT_OCC_COLUMNS)}}
               for t in event_templates(g)]
         out.append({**g, "engine": engine_of(g), "templates": tpl, "event_templates": ev})
     return {"groups": out, "vocab": vocab, "classifier": CLASSIFIER, "occ_columns": OCC_COLUMNS,
-            "entity_columns": ENTITY_COLUMNS, "event_columns": EVENT_COLUMNS, "rollup_keys": ROLLUP_KEYS,
+            "entity_columns": ENTITY_COLUMNS, "event_occ_columns": EVENT_OCC_COLUMNS,
+            "event_columns": EVENT_COLUMNS, "event_keys": EVENT_KEYS, "rollup_keys": ROLLUP_KEYS,
             "sample_keys": SAMPLE_KEYS, "stats_roles": list(STATS_ROLES)}
 
 

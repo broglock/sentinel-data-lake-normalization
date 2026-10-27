@@ -51,3 +51,7 @@ base
     MappingTier = toint(1)
 };
 union G_SecurityEvent_Logon_ev()
+| summarize Count = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+            SampleKeys = make_set(SourceRecordKey, 3)
+    by Hour = bin(EventStartTime, 1h), SourceTable, SourceGroup, EventVendor, EventProduct, EventSchema, EventType, EventResult, EventResultDetails, EventSeverity, SrcIpAddr, DstIpAddr, DstPortNumber, NetworkProtocol, DvcAction, SrcHostname, DstHostname, DvcHostname, DvcIpAddr, DvcDomain, SrcUsername, DstUsername, ActorUsername, ActorUsernameType, ActorUserId, ActorUserIdType, TargetUsername, TargetUsernameType, Url, DstDomain, HttpUserAgent, DnsQuery, FileName, FileSHA256, FileMD5, ActingProcessName, TargetProcessName, TargetProcessCommandLine, DstZone, MappingTier
+| project Hour, FirstSeen, LastSeen, SourceTable, SourceGroup, EventVendor, EventProduct, EventSchema, EventType, EventResult, EventResultDetails, EventSeverity, SrcIpAddr, DstIpAddr, DstPortNumber, NetworkProtocol, DvcAction, SrcHostname, DstHostname, DvcHostname, DvcIpAddr, DvcDomain, SrcUsername, DstUsername, ActorUsername, ActorUsernameType, ActorUserId, ActorUserIdType, TargetUsername, TargetUsernameType, Url, DstDomain, HttpUserAgent, DnsQuery, FileName, FileSHA256, FileMD5, ActingProcessName, TargetProcessName, TargetProcessCommandLine, DstZone, MappingTier, Count, SampleKeys

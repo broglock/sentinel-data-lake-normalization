@@ -120,6 +120,9 @@ checks.append(all(r["Count"] >= 1 and 1 <= len(r["SampleKeys"]) <= 3 and r["Hour
 checks.append(stats.get(("Syslog:sshd", "RowsRead")) == 3 and stats.get(("Syslog:sshd", "RowsWithEntity")) == 3
               and stats.get(("Syslog:sshd", "RowsTemplateMatched")) == 2)
 checks.append(stats.get(("AppAudit_CL:v2", "RowsRead")) == 1 and ("AppAudit_CL:v2", "RowsTemplateMatched") not in stats)
+# HuntEvent is an hourly rollup: counts and sample keys on every row
+checks.append(all(e["Count"] >= 1 and 1 <= len(e["SampleKeys"]) <= 3 and e["Hour"].minute == 0
+                  and "SrcPortNumber" not in e for e in events))
 # Tier 1 templates write HuntEvent rows too
 ssh = sorted((e["EventResult"], e["TargetUsername"], e["SrcIpAddr"]) for e in events if e["SourceGroup"] == "Syslog:sshd")
 print("sshd events:", ssh)

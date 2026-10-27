@@ -102,7 +102,8 @@ counts = nb.run(spark, p, cfg, now=NOW)
 
 saved = spark.createDataFrame(p.saved["HuntEntity_SPRK"])
 ent = saved.where(F.col("EntityType") != "_stats")
-ddl = ", ".join(f"{c} {dict(string='string', int='int', datetime='timestamp')[t]}" for c, t in cfg["event_columns"])
+ddl = ", ".join(f"{c} {dict(string='string', int='int', long='long', datetime='timestamp', dynamic='array<string>')[t]}"
+               for c, t in cfg["event_columns"])
 evt = spark.createDataFrame([{c: r.get(c) for c, _ in cfg["event_columns"]} for r in p.saved["HuntEvent_SPRK"]], ddl)
 
 
@@ -125,13 +126,13 @@ def hunt_value(value: str):
 
 
 def auth_events(user: str):
-    """From HuntEvent: Tier 1 sign-in events with their result and source IP."""
+    """From HuntEvent (hourly rollup): Tier 1 sign-ins with result, source IP and count."""
     v = user.strip().lower()
     vshort = v.split("\\")[1] if "\\" in v else (v.split("@")[0] if "@" in v else v)
     u = F.when(F.col("TargetUsername") != "", F.col("TargetUsername")).otherwise(F.col("ActorUsername"))
     return (evt.where(F.col("EventType").isin("Logon", "Logoff") & (short(u) == vshort))
-               .select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
-                       "EventResult", u.alias("User"), "SrcIpAddr")
+               .select(F.date_format("FirstSeen", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
+                       "EventResult", u.alias("User"), "SrcIpAddr", "Count")
                .orderBy("Time"))
 
 
@@ -168,10 +169,11 @@ parts += ["HuntEntity is an hourly rollup: one row per hour, group, entity, role
 for g in cfg["groups"]:
     parts += [f"## {g['id']}", "", rollup_md(ent.where(F.col("SourceGroup") == g["id"])), ""]
 parts += ["## _stats rows (what notebook 03 reads for coverage)", "", stats_md(saved), ""]
-parts += ["## HuntEvent rows (Tier 1 field rules and Tier 1 templates)", "",
-          md(evt.select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
+parts += ["## HuntEvent rows (Tier 1 field rules and Tier 1 templates, hourly rollup)", "",
+          "One row per hour and unique combination of the mapped ASIM fields, with Count. Time is FirstSeen.", "",
+          md(evt.select(F.date_format("FirstSeen", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
                         "EventResult", "SrcIpAddr", "DstIpAddr", "DstPortNumber", "TargetUsername", "SrcUsername",
-                        "DvcHostname", "DvcAction").orderBy("Time")), ""]
+                        "DvcHostname", "DvcAction", "Count").orderBy("Time", "SourceGroup")), ""]
 parts += ["## hunt_value('203.0.113.45')", "", md(hunt_value("203.0.113.45")), ""]
 parts += ["## auth_events('CONTOSO\\\\jsmith')", "", md(auth_events("CONTOSO\\jsmith")), ""]
 # ---------------------------------------------------------------- 5. after review: VPN templates

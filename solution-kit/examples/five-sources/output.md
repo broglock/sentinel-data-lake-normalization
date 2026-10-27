@@ -69,20 +69,22 @@ HuntEntity is an hourly rollup: one row per hour, group, entity, role and result
 | Syslog:sshd | 3 | 3 | 3 |
 | VpnAppliance_CL:raw | 2 | 2 |  |
 
-## HuntEvent rows (Tier 1 field rules and Tier 1 templates)
+## HuntEvent rows (Tier 1 field rules and Tier 1 templates, hourly rollup)
 
-| Time | SourceGroup | EventType | EventResult | SrcIpAddr | DstIpAddr | DstPortNumber | TargetUsername | SrcUsername | DvcHostname | DvcAction |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 09:13:55 | CEF:Fortinet/Fortigate | NetworkSession | Failure | 203.0.113.45 | 10.1.2.3 | 3389 |  |  | FGT-EDGE01 | deny |
-| 09:14:02 | SecurityEvent:Logon | Logon | Failure | 203.0.113.45 |  |  | jsmith |  | DC01.corp.contoso.com |  |
-| 09:14:30 | Syslog:sshd | Logon | Failure | 203.0.113.45 |  |  | admin |  | web-07 |  |
-| 09:14:41 | Syslog:sshd | Logon | Failure | 203.0.113.45 |  |  | jsmith |  | web-07 |  |
-| 09:15:03 | AppAudit_CL:v2 | Logon | Failure | 203.0.113.45 |  |  | JSmith@contoso.com |  |  |  |
-| 09:31:12 | CEF:Fortinet/Fortigate | NetworkSession | Success | 10.20.30.40 | 198.51.100.7 | 443 |  | jsmith | FGT-EDGE01 | accept |
-| 09:31:40 | SecurityEvent:Logon | Logon | Success | 10.20.30.40 |  |  | jsmith |  | DC01.corp.contoso.com |  |
-| 09:32:05 | SecurityEvent:Logon | Logon | Success |  |  |  | svc_backup |  | DC01.corp.contoso.com |  |
-| 09:33:09 | AppAudit_CL:v2 | Logon | Success | 10.20.30.40 |  |  | jsmith@contoso.com |  |  |  |
-| 09:35:00 | Syslog:sshd | Logon | Success | 10.20.30.40 |  |  | deploy |  | web-07 |  |
+One row per hour and unique combination of the mapped ASIM fields, with Count. Time is FirstSeen.
+
+| Time | SourceGroup | EventType | EventResult | SrcIpAddr | DstIpAddr | DstPortNumber | TargetUsername | SrcUsername | DvcHostname | DvcAction | Count |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 09:13:55 | CEF:Fortinet/Fortigate | NetworkSession | Failure | 203.0.113.45 | 10.1.2.3 | 3389 |  |  | FGT-EDGE01 | deny | 1 |
+| 09:14:02 | SecurityEvent:Logon | Logon | Failure | 203.0.113.45 |  |  | jsmith |  | DC01.corp.contoso.com |  | 1 |
+| 09:14:30 | Syslog:sshd | Logon | Failure | 203.0.113.45 |  |  | admin |  | web-07 |  | 1 |
+| 09:14:41 | Syslog:sshd | Logon | Failure | 203.0.113.45 |  |  | jsmith |  | web-07 |  | 1 |
+| 09:15:03 | AppAudit_CL:v2 | Logon | Failure | 203.0.113.45 |  |  | JSmith@contoso.com |  |  |  | 1 |
+| 09:31:12 | CEF:Fortinet/Fortigate | NetworkSession | Success | 10.20.30.40 | 198.51.100.7 | 443 |  | jsmith | FGT-EDGE01 | accept | 1 |
+| 09:31:40 | SecurityEvent:Logon | Logon | Success | 10.20.30.40 |  |  | jsmith |  | DC01.corp.contoso.com |  | 1 |
+| 09:32:05 | SecurityEvent:Logon | Logon | Success |  |  |  | svc_backup |  | DC01.corp.contoso.com |  | 1 |
+| 09:33:09 | AppAudit_CL:v2 | Logon | Success | 10.20.30.40 |  |  | jsmith@contoso.com |  |  |  | 1 |
+| 09:35:00 | Syslog:sshd | Logon | Success | 10.20.30.40 |  |  | deploy |  | web-07 |  | 1 |
 
 ## hunt_value('203.0.113.45')
 
@@ -96,13 +98,13 @@ HuntEntity is an hourly rollup: one row per hour, group, entity, role and result
 
 ## auth_events('CONTOSO\\jsmith')
 
-| Time | SourceGroup | EventType | EventResult | User | SrcIpAddr |
-| --- | --- | --- | --- | --- | --- |
-| 09:14:02 | SecurityEvent:Logon | Logon | Failure | jsmith | 203.0.113.45 |
-| 09:14:41 | Syslog:sshd | Logon | Failure | jsmith | 203.0.113.45 |
-| 09:15:03 | AppAudit_CL:v2 | Logon | Failure | JSmith@contoso.com | 203.0.113.45 |
-| 09:31:40 | SecurityEvent:Logon | Logon | Success | jsmith | 10.20.30.40 |
-| 09:33:09 | AppAudit_CL:v2 | Logon | Success | jsmith@contoso.com | 10.20.30.40 |
+| Time | SourceGroup | EventType | EventResult | User | SrcIpAddr | Count |
+| --- | --- | --- | --- | --- | --- | --- |
+| 09:14:02 | SecurityEvent:Logon | Logon | Failure | jsmith | 203.0.113.45 | 1 |
+| 09:14:41 | Syslog:sshd | Logon | Failure | jsmith | 203.0.113.45 | 1 |
+| 09:15:03 | AppAudit_CL:v2 | Logon | Failure | JSmith@contoso.com | 203.0.113.45 | 1 |
+| 09:31:40 | SecurityEvent:Logon | Logon | Success | jsmith | 10.20.30.40 | 1 |
+| 09:33:09 | AppAudit_CL:v2 | Logon | Success | jsmith@contoso.com | 10.20.30.40 | 1 |
 
 # After review: VPN appliance templates approved
 
@@ -133,12 +135,12 @@ HuntEntity is an hourly rollup: one row per hour, group, entity, role and result
 
 ## auth_events('CONTOSO\\jsmith') after review
 
-| Time | SourceGroup | EventType | EventResult | User | SrcIpAddr |
-| --- | --- | --- | --- | --- | --- |
-| 09:14:02 | SecurityEvent:Logon | Logon | Failure | jsmith | 203.0.113.45 |
-| 09:14:41 | Syslog:sshd | Logon | Failure | jsmith | 203.0.113.45 |
-| 09:15:03 | AppAudit_CL:v2 | Logon | Failure | JSmith@contoso.com | 203.0.113.45 |
-| 09:15:20 | VpnAppliance_CL:raw | Logon | Failure | jsmith | 203.0.113.45 |
-| 09:31:40 | SecurityEvent:Logon | Logon | Success | jsmith | 10.20.30.40 |
-| 09:33:09 | AppAudit_CL:v2 | Logon | Success | jsmith@contoso.com | 10.20.30.40 |
-| 09:33:50 | VpnAppliance_CL:raw | Logon | Success | jsmith | 10.20.30.40 |
+| Time | SourceGroup | EventType | EventResult | User | SrcIpAddr | Count |
+| --- | --- | --- | --- | --- | --- | --- |
+| 09:14:02 | SecurityEvent:Logon | Logon | Failure | jsmith | 203.0.113.45 | 1 |
+| 09:14:41 | Syslog:sshd | Logon | Failure | jsmith | 203.0.113.45 | 1 |
+| 09:15:03 | AppAudit_CL:v2 | Logon | Failure | JSmith@contoso.com | 203.0.113.45 | 1 |
+| 09:15:20 | VpnAppliance_CL:raw | Logon | Failure | jsmith | 203.0.113.45 | 1 |
+| 09:31:40 | SecurityEvent:Logon | Logon | Success | jsmith | 10.20.30.40 | 1 |
+| 09:33:09 | AppAudit_CL:v2 | Logon | Success | jsmith@contoso.com | 10.20.30.40 | 1 |
+| 09:33:50 | VpnAppliance_CL:raw | Logon | Success | jsmith | 10.20.30.40 | 1 |

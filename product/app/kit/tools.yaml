@@ -5,8 +5,8 @@
 #
 # Collection description (paste into the collection or server instructions):
 #   Hunt across every log source through the normalized hunt index. HuntEntity is an hourly
-#   rollup (Count of events per hour, source, entity, role and result); HuntEvent holds one
-#   row per event for Tier 1 sources. Start with hunt_value or hunt_entity, report how many
+#   rollup (Count of events per hour, source, entity, role and result); HuntEvent is an hourly
+#   rollup of Tier 1 events (Count per hour and unique combination of ASIM fields). Start with hunt_value or hunt_entity, report how many
 #   sources matched at each tier, treat Role=Unknown as unknown, use auth_events or
 #   network_events for per-event detail, fetch originals with pivot_raw before quoting raw
 #   fields, and run search_raw on the tables listed by coverage before saying a value was
@@ -57,7 +57,7 @@ tools:
       | order by Events desc
 
   - name: auth_events
-    description: Sign-in events for a user with their result and source IP, from Tier 1 sources (HuntEvent).
+    description: Sign-ins for a user with result and source IP, from Tier 1 sources (HuntEvent hourly rollup; repeated sign-ins with the same user, source IP and result in an hour are one row with Count).
     parameters:
       - {name: User, description: "User in any format."}
       - {name: Result, description: "Success, Failure, or * for any."}
@@ -67,18 +67,19 @@ tools:
       let v = tolower(trim(@"\s", "{User}"));
       let vshort = case(v contains @"\", tostring(split(v, @"\")[1]), v contains "@", tostring(split(v, "@")[0]), v);
       HuntIndexEvent
-      | where EventStartTime > ago({LookbackDays}d)
+      | where Hour > ago({LookbackDays}d)
       | where EventType in ("Logon", "Logoff") or EventSchema == "Authentication"
       | extend User = iff(isnotempty(TargetUsername), TargetUsername, ActorUsername)
       | extend u = tolower(User)
       | where case(u contains @"\", tostring(split(u, @"\")[1]), u contains "@", tostring(split(u, "@")[0]), u) == vshort
       | where "{Result}" == "*" or EventResult == "{Result}"
-      | project EventStartTime, SourceTable, SourceGroup, EventType, EventResult, User, SrcIpAddr, SourceRecordKey
+      | project EventStartTime = FirstSeen, LastSeen, Count, SourceTable, SourceGroup, EventType, EventResult, User,
+                SrcIpAddr, SampleKeys, SourceRecordKey = tostring(SampleKeys[0])
       | order by EventStartTime desc
       | take 500
 
   - name: network_events
-    description: Network sessions involving an IP, with direction and device action, from Tier 1 sources.
+    description: Network sessions involving an IP, with direction and device action, from Tier 1 sources (HuntEvent hourly rollup).
     parameters:
       - {name: Ip, description: "IPv4 or IPv6 address."}
       - {name: LookbackDays, description: "Days to search back."}
@@ -86,21 +87,21 @@ tools:
       let HuntIndexEvent = union isfuzzy=true HuntEvent_SPRK, HuntEvent_KQL;
       let ip = tolower(trim(@"\s", "{Ip}"));
       HuntIndexEvent
-      | where EventStartTime > ago({LookbackDays}d)
+      | where Hour > ago({LookbackDays}d)
       | where SrcIpAddr == ip or DstIpAddr == ip
       | where EventSchema == "NetworkSession" or isnotempty(DstIpAddr)
-      | summarize Sessions = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+      | summarize Sessions = sum(Count), FirstSeen = min(FirstSeen), LastSeen = max(LastSeen),
                   Actions = make_set(DvcAction), Results = make_set(EventResult)
           by SourceGroup, SrcIpAddr, DstIpAddr, DstPortNumber
       | order by Sessions desc
       | take 500
 
   - name: pivot_raw
-    description: Fetch the original log rows behind an index row (HuntEntity rows cover up to one hour).
+    description: Fetch the original log rows behind an index row (HuntEntity and HuntEvent rows cover up to one hour).
     parameters:
       - {name: SourceTable, description: "SourceTable from the index row."}
       - {name: FirstSeen, description: "FirstSeen (or EventStartTime) from the index row, ISO 8601."}
-      - {name: LastSeen, description: "LastSeen from the index row, ISO 8601; same as FirstSeen for a HuntEvent row."}
+      - {name: LastSeen, description: "LastSeen from the index row, ISO 8601 (HuntEntity and HuntEvent rows each cover up to one hour)."}
       - {name: Value, description: "The Value from the index row."}
     query: |
       let t0 = todatetime("{FirstSeen}");
