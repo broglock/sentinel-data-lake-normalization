@@ -21,7 +21,7 @@ Changes from the earlier infographic design, based on this round of research:
 
 ![Architecture](../diagrams/architecture.png)
 
-How to read it: sources on the left, grouped by format (structured columns, CEF, JSON, syslog text, raw text). Each source table is split into grammar groups by the registry. Groups with an ASIM parser or clean columns run as hourly KQL jobs; the long tail runs in the hourly notebook. Both engines write the same two lake tables: HuntEntity_SPRK (one row per entity) and HuntEvent_SPRK (ASIM-shaped Tier 1 events). The MCP tools on the right query only those two tables, then pivot back to the raw row with SourceRecordKey. Notebooks 01 and 03 sit underneath: 01 proposes rules and templates, 03 measures coverage and flags drift. Adding a source means adding registry entries, not new tables or DCRs.
+How to read it: sources on the left, grouped by format (structured columns, CEF, JSON, syslog text, raw text). Each source table is split into grammar groups by the registry. Approved groups (ASIM parser logic, registry rules or approved templates) run as hourly KQL jobs; only unreviewed groups run in the hourly notebook. Both engines write the same two lake tables: HuntEntity_SPRK (one row per entity) and HuntEvent_SPRK (ASIM-shaped Tier 1 events). The MCP tools on the right query only those two tables, then pivot back to the raw row with SourceRecordKey. Notebooks 01 and 03 sit underneath: 01 proposes rules and templates, 03 measures coverage and flags drift. Adding a source means adding registry entries, not new tables or DCRs.
 
 ## Five log sources, end to end
 
@@ -189,20 +189,22 @@ The join key is deliberately loose for users and hosts; the agent checks `Value`
 
 ## Build pipeline and job budget
 
-1. Inventory (daily notebook job): every lake table sampled; typed columns, JSON keys and key=value keys with type, fill rate and value class. Output `FieldInventory_SPRK`.
+1. Inventory (daily notebook job, change-driven): reads only new tables, tables whose column list or JSON key set changed since the last run, and the lines the index jobs counted as unmatched. Approved, high-confidence groups are skipped. Typed columns, JSON keys and key=value keys with type, fill rate and value class. Output `FieldInventory_SPRK`.
 2. Group: `ProcessName` for Syslog, `DeviceVendor` + `DeviceProduct` for CEF, a source tag or first token for raw `_CL` tables, a fingerprint of the sorted key list for JSON tables.
 3. Propose: registry rules from synonyms, role tokens and value classes; templates by token masking. Proposals land as a pull request.
 4. Review: an analyst approves or corrects each grammar group once.
-5. Generate: KQL job queries for high-volume groups, a config for the long-tail notebook, MCP tool queries.
-6. Run: KQL jobs and the long-tail notebook append to `HuntEvent` and `HuntEntity` each hour, aligned hour windows, 15-minute delay.
-7. Measure: a daily notebook job writes the coverage report.
+5. Generate: KQL job queries for every approved group, including approved message templates, which are written as KQL `parse` or `extract`; a config for the notebook covering only unreviewed groups; MCP tool queries.
+6. Run: KQL jobs and the notebook append to `HuntEvent` and `HuntEntity` each hour, aligned hour windows, 15-minute delay. Each run reads only the new hour; nothing already indexed is read again. Each job also writes its counts (rows read, rows with an entity, rows matching a template) to `HuntJobStats`.
+7. Measure: a daily job builds the coverage report from `HuntJobStats`. It does not read source tables.
+
+A source group moves through three states. Unreviewed: the notebook indexes it hourly through the value classifier (Tier 2). Approved: its mapping runs in a KQL job and the notebook no longer touches it. Drifting: the job counts show the match rate falling, notebook 01 reads the unmatched lines on its next run and proposes a fix. In steady state most volume runs in KQL jobs and the notebooks handle only new and changed sources.
 
 | Work | Engine | Schedule | Count | Limit it stays inside |
 | --- | --- | --- | --- | --- |
 | Index build, top grammar groups | KQL jobs | Hourly, start minutes staggered | Up to about 40 | 100 enabled per tenant; 3 to 5 concurrent, rejected when over |
-| Index build, every other group | Notebook job | Hourly | 1 | 3 concurrent notebook jobs, 8-hour timeout |
-| Inventory, grouping, template mining | Notebook job | Daily | 1 | Same |
-| Coverage report | Notebook job | Daily | 1 | Same |
+| Index build, unreviewed groups only | Notebook job | Hourly | 1 | 3 concurrent notebook jobs, 8-hour timeout |
+| Inventory and template mining, new and changed sources only | Notebook job | Daily | 1 | Same |
+| Coverage report from `HuntJobStats` | Notebook or KQL job | Daily | 1 | Same |
 | Backfill of history | Notebook job | On demand | 1 at a time | Same |
 
 ## Data lake MCP integration
@@ -251,7 +253,7 @@ How to read it: top to bottom. A new table lands in the lake, notebook 01 invent
 
 ## Lab tests, corrections and the solution kit
 
-Offline checks pass (Kusto.Language parse and schema check; notebook logic on sample data with a fake provider). Nothing has run in a real lake yet. Lab tests: `solution-kit/tests/lab-test-plan.md`.
+Offline checks pass (Kusto.Language parse and schema check; notebook logic on sample data with a fake provider). The design has since been deployed and run in a test tenant with the data lake onboarded; production-volume behaviour is still open. Lab tests: `solution-kit/tests/lab-test-plan.md`. Cost: `notes/cost-model-1tb-day.md`.
 
 | Infographic | Current wording | Correction |
 | --- | --- | --- |

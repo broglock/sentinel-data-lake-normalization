@@ -28,7 +28,7 @@ Audiences: customers and pre-sales, blog and LinkedIn, Microsoft product group f
 | `blog/build/` | `build.py` and `style.css`: from inside `blog/build/`, run `python build.py ../hunting-across-hundreds-of-log-sources.md ../hunting-across-hundreds-of-log-sources.html` to regenerate the HTML after editing the Markdown (needs pandoc) |
 | `blog/img/` | The four blog images: `01-before-after`, `02-mapping-layers`, `03-architecture`, `04-onboarding` |
 | `notes/asim-lake-hunting-solution.md` | Design note, 18 October 2026: questions to ask, platform facts, the two lake tables, mapping layers and precedence, role and result rules, job budget, data lake MCP integration, coverage and drift, onboarding, lab tests and sources |
-| `notes/cost-model-1tb-day.md` | Planning cost model at 1 TB/day: index build, index size and storage, hunt cost, hourly entity rollup, controls and lab tests (26 October 2026) |
+| `notes/cost-model-1tb-day.md` | Planning cost model at 1 TB/day: about $830 to $890 a month with change-driven notebooks and the hourly entity rollup; also the original design, index size, controls and lab tests (revised 27 October 2026) |
 | `notes/research-notes.md` | Facts, sources and items still to verify in a lab |
 | `diagrams/architecture.png`, `diagrams/onboarding.png` | Architecture and onboarding diagrams used in the design note |
 | `infographics/png/` | The ten infographics, 1080 x 1350 px at 2x (2160 x 2700), LinkedIn portrait ratio |

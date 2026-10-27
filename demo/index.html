@@ -231,18 +231,18 @@ const V={};
 V.overview=()=>{const lane=(label,blocks)=>`<tr><td>${label}</td><td><div class="lane">${blocks.map(b=>`<span style="left:${b[0]/24*100}%;width:${Math.max(b[1]/24*100,1.2)}%;background:${b[2]}" title="${esc(b[3]||"")}">${esc(b[3]||"")}</span>`).join("")}</div></td></tr>`;
  const hourly=(c)=>Array.from({length:24},(_,h)=>[h+.25,.35,c,""]);
  const st=S.nb01;
- return `<h1>Daily schedule</h1><p class="sub">Everything below runs inside the Sentinel data lake on a schedule. Nobody starts these jobs by hand.</p>
+ return `<h1>Daily schedule</h1><p class="sub">Everything below runs inside the Sentinel data lake on a schedule. Approved mappings run in KQL jobs; the notebooks only touch new, changed and unreviewed sources.</p>
  <div class="card" id="sched"><h2>Jobs over 24 hours (UTC)</h2>
  <table class="jobs"><tbody>
- ${lane("Notebook 01 · inventory and template mining · daily",[[2,.6,"#6a4fb3",""]])}
- ${lane("KQL jobs · ASIM logic and registry rules · hourly",hourly("#0f6e8c"))}
- ${lane("Notebook 02 · templates and classifier · hourly",hourly("#2f8f6a"))}
- ${lane("Notebook 03 · coverage and drift · daily",[[4,.4,"#b7791f",""]])}
+ ${lane("Notebook 01 · new and changed sources only · daily",[[2,.6,"#6a4fb3",""]])}
+ ${lane("KQL jobs · every approved mapping · hourly",hourly("#0f6e8c"))}
+ ${lane("Notebook 02 · unreviewed sources only · hourly",Array.from({length:24},(_,h)=>[h+.25,.12,"#2f8f6a",""]))}
+ ${lane("Notebook 03 · coverage from job counts · daily",[[4,.4,"#b7791f",""]])}
  </tbody></table>
  <div class="row" style="justify-content:space-between;color:var(--mute);font-size:11.5px;margin-top:4px;padding-left:34%"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div></div>
  <div class="grid g2">
  <div class="card" id="nb01"><div class="row"><h2 style="margin:0">Notebook 01, today 02:00</h2><span class="sp"></span>${st==="done"?tag("t-ok","Completed"):st==="running"?tag("t-warn","Running"):tag("t-low","Scheduled")}</div>
- <p style="margin:8px 0">Scans every lake table, profiles each field and proposes mappings for anything new or changed. Proposals wait for a person.</p>
+ <p style="margin:8px 0">Reads only new tables, changed schemas and lines no template matched. Approved sources are skipped. Proposals wait for a person.</p>
  <div class="bar"><i id="nb01bar" style="width:${st==="done"?100:st==="running"?50:0}%"></i></div>
  <div class="row" style="margin-top:10px"><button class="btn pri" id="runnb01" ${st!=="waiting"?"disabled":""}>Run now (simulate 02:00)</button></div></div>
  <div class="card"><h2>Run log</h2><div class="log" id="log">${S.nb01log.map(l=>`<div>${esc(l)}</div>`).join("")||'<div style="color:#7d8e9e">Waiting for the 02:00 run.</div>'}</div></div></div>
@@ -344,7 +344,7 @@ V.approve=()=>{if(!S.onboard.submitted||S.approved)return `<h1>Review and approv
  <details style="margin:10px 0"><summary>Registry entry</summary><pre style="margin-top:8px">${yaml()}</pre></details>
  ${S.role==="Admin"?'<div class="row"><button class="btn ok" id="doapprove">Approve</button><button class="btn" id="doreject">Reject with reason</button></div>':'<p class="note">Only an Admin can approve. Switch the role in the top bar.</p>'}</div>`};
 
-V.coverage=()=>{const src=allSources();return `<h1>Coverage and drift</h1><p class="sub">Written daily by notebook 03. Extraction rate is the share of rows with at least one entity; the target is 90%.</p>
+V.coverage=()=>{const src=allSources();return `<h1>Coverage and drift</h1><p class="sub">Written daily by notebook 03 from the counts each index job records. Extraction rate is the share of rows with at least one entity; the target is 90%.</p>
  <div class="card" id="covtable"><table><thead><tr><th>Source group</th><th>Mapped by</th><th>Tier</th><th>Extraction</th><th>Last 7 days</th><th>Status</th></tr></thead><tbody>
  ${src.map(s=>`<tr class="${s.drift?"click":""}" ${s.drift?'data-go="drift"':""}><td class="mono">${esc(s.g)}</td><td>${esc(s.layer)}</td><td>${s.tier}</td><td>${s.ext.toFixed(1)}%</td><td>${spark(s.trend,s.ext<90)}</td><td>${s.drift?tag("t-warn","Drift"):s.ext<90?tag("t-low","Tier 2, not reviewed"):tag("t-ok","OK")}</td></tr>`).join("")}</tbody></table></div>`};
 V.drift=()=>{const fixed=S.driftFixed;return `<h1>VpnAppliance_CL:raw</h1><p class="sub">Extraction fell from 97% to 64% on 2026-10-24. Notebook 03 flagged it; notebook 01 mined the lines that no template matches.</p>
@@ -385,7 +385,7 @@ function timeline(rows){const sorted=rows.slice().sort((a,b)=>a[0]<b[0]?-1:1);co
  <div class="row" style="font-size:12px;color:var(--mute)"><span style="color:#1f8a4c">●</span> Success <span style="color:#c0392b">✕</span> Failure <span style="color:#0f6e8c">○</span> No result</div>`}
 V.about=()=>`<h1>How this works</h1><p class="sub">What the demo shows and what it leaves out.</p>
  <div class="card"><h2>The index</h2><p>Scheduled lake jobs read every source table and write two lake tables. <code>HuntEntity</code> holds one row per entity, per hour, per source and role, with a count, first and last seen times and sample record keys. <code>HuntEvent</code> holds ASIM-shaped rows for sources mapped well enough to trust.</p>
- <h2>The builders</h2><p>KQL jobs map structured sources through ASIM parser logic and registry rules. Notebook 02 (PySpark) maps free text through message templates and a value classifier. Notebook 01 proposes mappings daily; notebook 03 measures coverage daily and flags drift.</p>
+ <h2>The builders</h2><p>KQL jobs run every approved mapping: ASIM parser logic, registry rules and approved message templates. Notebook 02 (PySpark) indexes unreviewed sources through a value classifier until they are approved. Notebook 01 checks new and changed sources daily and proposes mappings; notebook 03 builds coverage and drift from job counts. Nothing already indexed is read again.</p>
  <h2>The data</h2><p>All data is synthetic: documentation IP ranges, private 10.x addresses and contoso.com names. Nothing in this page calls a server.</p>
  <h2>The real product</h2><p>Lake Hunt runs as one container with a web UI, a REST API and an MCP server for AI agents. See the repository README for deployment.</p></div>`;
 
@@ -412,7 +412,7 @@ function bind(){document.querySelectorAll("[data-go]").forEach(e=>e.onclick=ev=>
  const k=$("#kind");if(k)k.onchange=()=>toast("Presets change the recommended roles. Physical access keeps the holder as the actor.")}
 function doHunt(){S.screen="hunt";S.hunted=huntRows(S.query);render()}
 function runNb01(){if(S.nb01!=="waiting")return;S.nb01="running";S.nb01log=[];render();
- const L=["02:00:04 job notebook-01-inventory started on pool small (12 vCores)","02:00:41 listing lake tables: 31 tables, 9 source groups registered","02:01:12 sampling 5,000 rows per table from the last 24 hours","02:02:30 profiling fields: typed columns, JSON keys, key=value keys","02:03:55 BadgeReader_CL: new table, not in the registry","02:04:02   holder: 100% UPN · reader: 100% IPv4 · result: 2 values · door · badge","02:04:40 VpnAppliance_CL: 36% of rows match no template","02:05:21   mined 1 template candidate from 8,214 unmatched lines","02:06:10 wrote FieldInventory_SPRK and TemplateCandidates_SPRK","02:06:58 proposals opened for review: 2","02:07:03 job finished in 6 min 59 s"];
+ const L=["02:00:04 job notebook-01-inventory started on pool small (12 vCores)","02:00:41 listing lake tables: 31 tables, 9 source groups registered","02:01:02 skipping 8 approved groups: no schema change, unmatched lines under 2%","02:01:12 reading 1 new table and 1 group with unmatched lines","02:02:30 profiling fields: typed columns, JSON keys, key=value keys","02:03:55 BadgeReader_CL: new table, not in the registry","02:04:02   holder: 100% UPN · reader: 100% IPv4 · result: 2 values · door · badge","02:04:40 VpnAppliance_CL: 36% of rows match no template","02:05:21   mined 1 template candidate from 8,214 unmatched lines","02:06:10 wrote FieldInventory_SPRK and TemplateCandidates_SPRK","02:06:58 proposals opened for review: 2","02:07:03 job finished in 6 min 59 s"];
  let i=0;const t=setInterval(()=>{S.nb01log.push(L[i++]);const lg=$("#log");if(lg){lg.innerHTML=S.nb01log.map(l=>`<div>${esc(l)}</div>`).join("");lg.scrollTop=1e4}const b=$("#nb01bar");if(b)b.style.width=(i/L.length*100)+"%";
   if(i>=L.length){clearInterval(t);S.nb01="done";render();toast("Notebook 01 finished. 2 proposals are waiting.")}},380)}
 function runChecks(){S.checks=[1,0,0,0];render();const seq=[[0,2],[1,1],[2,1],[2,2],[3,1],[3,2]];let i=0;const t=setInterval(()=>{const [k,v]=seq[i++];S.checks[k]=v;render();if(i>=seq.length)clearInterval(t)},600)}
@@ -425,8 +425,8 @@ document.querySelectorAll("#role button").forEach(b=>b.onclick=()=>setRole(b.dat
 
 /* ---------------- guided walkthrough ---------------- */
 const T=[
- {s:"overview",hl:"#sched",t:"The daily schedule",x:`<p>This is a static demo of Lake Hunt, a hunt index for the Microsoft Sentinel data lake. All data is synthetic.</p><p>Four kinds of job run on a schedule: notebook 01 daily, KQL jobs and notebook 02 hourly, notebook 03 daily. The operator's day starts with what they produced overnight.</p>`},
- {s:"overview",hl:"#nb01",t:"Notebook 01 kicks off",x:`<p>At 02:00 notebook 01 scans every lake table and profiles each field. Press <b>Next</b> to run it, or click <b>Run now</b>.</p>`,go:()=>runNb01(),wait:()=>S.nb01==="done"},
+ {s:"overview",hl:"#sched",t:"The daily schedule",x:`<p>This is a static demo of Lake Hunt, a hunt index for the Microsoft Sentinel data lake. All data is synthetic.</p><p>Four kinds of job run on a schedule. KQL jobs run every approved mapping hourly. The notebooks only touch what is new, changed or not yet reviewed, so once a source is approved they stop reading it.</p>`},
+ {s:"overview",hl:"#nb01",t:"Notebook 01 kicks off",x:`<p>At 02:00 notebook 01 checks for new tables, changed schemas and lines no template matched. Approved sources are skipped. Press <b>Next</b> to run it, or click <b>Run now</b>.</p>`,go:()=>runNb01(),wait:()=>S.nb01==="done"},
  {s:"overview",hl:"#nb01result",t:"What it found",x:`<p>One new table, <code>BadgeReader_CL</code>, with five proposed fields. And a format change in the VPN appliance logs that broke an existing template.</p><p>Nothing changes in the index until a person reviews these.</p>`},
  {s:"home",hl:"#attn",t:"The operator's morning",x:`<p>Home collects everything that needs a person: new sources, changes waiting for approval and drift alerts. Start with the new table.</p>`},
  {s:"onboard",hl:"#fg-hi",t:"New fields to add to the index",x:`<p>Each field arrives with a recommendation, the reason and sample values. The operator never types ASIM names; they pick what the field is and what role it plays.</p><p>Next accepts the three high-confidence fields.</p>`,go:()=>{S.fields.filter(f=>f.conf==="hi").forEach(f=>f.dec=true)}},
@@ -437,7 +437,7 @@ const T=[
  {s:"onboard",hl:"#deploycard",t:"Generate and deploy the job",x:`<p>The registry generates the lake job. It writes the hourly rollup into <code>HuntEntity</code>: one row per entity, hour, source and role. Next marks it deployed.</p>`,go:()=>{S.deployed=true}},
  {s:"onboard",hl:"#checks",t:"Four checks before it goes live",x:`<p>Coverage numbers, a hand check of sample rows, a canary event found through the agent, and a pivot back to the raw row. Next runs them.</p>`,go:()=>{S.checks=[2,2,2,2]}},
  {s:"coverage",hl:"#covtable",t:"Coverage and drift",x:`<p>Notebook 03 writes this table daily. <code>BadgeReader_CL</code> is now Tier 1. <code>VpnAppliance_CL</code> dropped to 64% after a firmware update.</p>`},
- {s:"drift",hl:"#newtpl",t:"Fixing drift",x:`<p>Notebook 01 mined a template from the lines that stopped matching. Accepting it goes through the same approval and brings extraction back to 97%.</p>`,go:()=>{S.driftFixed=true}},
+ {s:"drift",hl:"#newtpl",t:"Fixing drift",x:`<p>Notebook 01 mined a template from the lines that stopped matching. Accepting it goes through the same approval; the template then runs in the VPN source's KQL job and extraction goes back to 97%.</p>`,go:()=>{S.driftFixed=true}},
  {s:"hunt",hl:"#huntbox",t:"A basic threat hunt",x:`<p>An alert names <code>203.0.113.45</code>. One search covers every source. Next runs it.</p>`,go:()=>{S.query="203.0.113.45";S.hunted=huntRows(S.query)}},
  {s:"hunt",hl:"#timeline",t:"One query, ten source groups",x:`<p>A password spray across the firewall, Windows, Entra ID, sshd, Okta, the expenses app and the VPN. Then a success in Entra ID at 09:20 and an AWS console sign-in at 09:35.</p><p>Click any row in the table to open the original log line.</p>`},
  {s:"hunt",hl:"#summary",t:"Follow the user",x:`<p>The account that got in is jsmith. Next pivots to the user. <code>CONTOSO\\jsmith</code> matches the UPN and bare name in every source.</p>`,go:()=>{S.query="CONTOSO\\jsmith";S.hunted=huntRows(S.query)}},

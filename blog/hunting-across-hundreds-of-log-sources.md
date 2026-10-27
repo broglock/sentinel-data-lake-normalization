@@ -31,7 +31,7 @@ No single method covers hundreds of sources, so the index uses four, in order of
 
 1. ASIM logic. Where Microsoft ships an ASIM parser, its KQL is expanded into a lake-safe query (no stored functions) and runs as a job. This gives the same fields ASIM would.
 2. Registry rules. For structured sources with no parser (CEF, JSON, clean custom tables), a short mapping in a Git registry says which column or JSON path holds which ASIM field.
-3. Message templates. For free text such as Unix syslog, a notebook groups messages into templates by masking the variable parts. An analyst names the slots once, for example "Failed password for `<user>` from `<ip>`".
+3. Message templates. For free text such as Unix syslog, a notebook groups messages into templates by masking the variable parts. An analyst names the slots once, for example "Failed password for `<user>` from `<ip>`". An approved template then runs as KQL.
 4. Value classifier. Anything left over is scanned for values that look like IPs, emails, hashes or URLs. These rows are findable but carry no role, so they are marked as a lower tier.
 
 ![Every source is mapped by the most trusted method available to it](img/02-mapping-layers.png)
@@ -44,15 +44,15 @@ The result is that every source is searchable on day one, and the mapping gets b
 
 Everything runs inside the Sentinel data lake. There are no new data connectors, DCRs or ingestion changes: the index is built from data already there.
 
-The index builders are of two kinds. KQL jobs handle sources that already have structure, through ASIM logic and registry rules. Lake notebooks handle the rest. A lake notebook is Python for Spark (PySpark), written as a Jupyter notebook in Visual Studio Code with the Microsoft Sentinel extension, that reads lake tables and writes its results back to the lake. KQL jobs and notebooks can both run on a schedule, so once a source is approved nobody runs anything by hand.
+The index builders are of two kinds. KQL jobs run every approved mapping: ASIM logic, registry rules and approved message templates. A lake notebook handles the sources nobody has reviewed yet. The notebook is Python for Spark (PySpark), written as a Jupyter notebook in Visual Studio Code with the Microsoft Sentinel extension, that reads lake tables and writes its results back to the lake. KQL jobs and notebooks can both run on a schedule, so once a source is approved nobody runs anything by hand.
 
 Three scheduled notebooks do the work that would otherwise be manual:
 
-- Notebook 01 runs daily. It scans every lake table, profiles each field (how often it is filled and what its values look like) and proposes ASIM names, roles and message templates for an analyst to review.
-- Notebook 02 runs hourly. It indexes free-text and not-yet-reviewed sources through message templates and the value classifier, into the same two tables the KQL jobs write.
-- Notebook 03 runs daily. It measures each source's coverage and flags any source whose extraction rate drops, which usually means the vendor changed its log format.
+- Notebook 01 runs daily. It reads only new tables, changed schemas and the lines no template matched, profiles each field (how often it is filled and what its values look like) and proposes ASIM names, roles and message templates for an analyst to review. Sources with approved, high-confidence mappings are skipped.
+- Notebook 02 runs hourly on sources nobody has reviewed yet. It indexes them through the value classifier into the same two tables the KQL jobs write, so they are searchable from day one. Once a source is approved, its mapping moves into a KQL job and the notebook stops reading it.
+- Notebook 03 runs daily. It builds the coverage report from counts the index jobs record as they run (rows read, rows with an entity, rows matching a template) and flags any source whose extraction rate drops, which usually means the vendor changed its log format. It reads no source data.
 
-Analysts approve mappings and check results. Finding new fields, building the index and catching format changes all run on a schedule.
+A mapping is decided once. After approval, the only recurring work for a source is applying its mapping to each new hour of events in a KQL job; nothing already indexed is read again. Analysts approve mappings and check results. Finding new fields, building the index and catching format changes all run on a schedule.
 
 ![Hundreds of sources, one index, one set of field names](img/03-architecture.png)
 
@@ -82,7 +82,7 @@ How to read it: the top row runs left to right, then the flow turns down at the 
 
 ## Cost at 1 TB a day
 
-At 1 TB a day of lake ingestion, the index costs about $1,000 to $1,900 a month. That covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of the range comes from how long notebook 02 runs each hour. The figures use Microsoft's published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions are in the project's [GitHub repository](https://github.com/broglock/sentinel-data-lake-normalization), along with a walkthrough demo of the daily workflow.
+At 1 TB a day of lake ingestion, the index costs about $830 to $890 a month. That covers the hourly KQL jobs, the three notebooks and one year of storage for both index tables. Most of it is the KQL jobs and HuntEvent storage. The notebooks cost under $150 a month because they only touch new, changed and unreviewed sources. The figures use Microsoft's published Sentinel data lake prices in US dollars for East US. The full calculation and its assumptions are in the project's [GitHub repository](https://github.com/broglock/sentinel-data-lake-normalization), along with a walkthrough demo of the daily workflow.
 
 ## Limits
 
