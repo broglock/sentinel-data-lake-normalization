@@ -1,6 +1,6 @@
 # Cost model at 1 TB/day
 
-26 October 2026, revised 27 October 2026 for change-driven notebooks. A planning model, not a measurement. Prices are the Microsoft preview list prices in USD for East US: data lake query $0.005 per GB analyzed, advanced data insights (notebooks) $0.15 per compute hour, lake storage $0.026 per GB per month, lake ingestion $0.05 per GB. Confirm current regional prices on the Sentinel pricing page before quoting a customer. 1 TB = 1,000 GB, 30-day month.
+26 October 2026, revised 27 October 2026 for change-driven notebooks and the data processing meter. A planning model, not a measurement. Prices are the Microsoft preview list prices in USD for East US: data lake query $0.005 per GB analyzed, advanced data insights (notebooks) $0.15 per compute hour, lake storage $0.026 per GB per month, lake ingestion $0.05 per GB plus data processing $0.10 per GB ($0.15 per GB in total for data going into lake-only tables, confirmed against a production tenant's billing; data processing was free during the preview). Confirm current regional prices on the Sentinel pricing page before quoting a customer. 1 TB = 1,000 GB, 30-day month.
 
 ## Billing basis
 
@@ -8,7 +8,7 @@
 - Notebooks: compute hours = vCores in the pool x time the job runs. Pools of 12, 32 and 80 vCores (an older Learn page lists 4, 8 and 16).
 - Storage: billed on compressed size, 6:1.
 
-**Current figure: about $830 to $890 a month at 1 TB/day** (change-driven notebooks, hourly entity rollup, one year of index storage). The sections below show how the design got there: the original always-on notebooks, the index size problem, the rollup, then the change-driven notebooks.
+**Current figure: about $830 to $890 a month at 1 TB/day** (change-driven notebooks, hourly entity rollup, one year of index storage). This is what the index adds on top of the lake's own cost for the raw data, about $6,080 a month at this volume ($4,500 ingestion at $0.15 per GB, $1,580 for one year of storage). The sections below show how the design got there: the original always-on notebooks, the index size problem, the rollup, then the change-driven notebooks.
 
 ## Assumptions
 
@@ -55,11 +55,11 @@ At one row per entity occurrence the index is about as large as the raw data:
 | Effect | Per month |
 |---|---|
 | Storage at one year retention, steady state | about $1,630 |
-| Lake ingestion on index writes, if charged (not confirmed) | about $1,545 |
+| Lake ingestion and processing on index writes, if charged (not confirmed) | about $4,635 |
 | One hunt over a year of HuntEntity (274 TB scanned) | $1,369 per hunt |
 | One hunt over a year of raw data (365 TB scanned) | $1,825 per hunt |
 
-For comparison, the raw lake itself costs about $1,500/month to ingest and about $1,580/month to store for a year at this volume. At this grain the index roughly doubles the lake bill and saves only 25% per hunt.
+For comparison, the raw lake itself costs about $4,500/month to ingest (at $0.15 per GB) and about $1,580/month to store for a year at this volume. At this grain the index roughly doubles the lake bill and saves only 25% per hunt.
 
 ## Hourly entity rollup
 
@@ -101,7 +101,7 @@ Assumptions for steady state: 95% of volume in approved groups (KQL jobs), 5% un
 
 Compared with the original design with the rollup ($1,040 to $1,900), notebook compute falls from $306 to $1,170 a month to $79 to $131. HuntEvent storage is now the largest item; limiting HuntEvent to the schemas analysts query in ASIM form (for example authentication and network sessions) is the next saving.
 
-Not included: lake ingestion on index writes, if charged (about $447/month for 298 GB/day), and hunts against the index. During onboarding waves, when many sources are unreviewed at once, notebook 02 costs move back toward the original figures until the new groups are approved.
+Not included: the raw data's own lake cost (about $4,500/month ingestion and $1,580/month storage), lake ingestion and processing on index writes, if charged (about $1,340/month for 298 GB/day at $0.15 per GB), and hunts against the index. During onboarding waves, when many sources are unreviewed at once, notebook 02 costs move back toward the original figures until the new groups are approved.
 
 ## Controls
 
@@ -116,7 +116,7 @@ Not included: lake ingestion on index writes, if charged (about $447/month for 2
 ## Lab tests to add
 
 1. Notebook 02 runtime and session start time per run, on the 12 vCore pool, for a realistic share of unreviewed data.
-2. Whether KQL job and notebook output written to lake tables is billed as lake ingestion.
+2. Whether KQL job and notebook output written to lake tables is billed as lake ingestion and data processing ($0.15 per GB). Check the two meters in Cost Management for the hours after a job run.
 3. Distinct (hour, entity, role, source group) tuples as a share of entity occurrences.
 4. Whether a time filter on lake tables reduces the GB billed for a query.
 5. Whether approved templates written as KQL `parse`/`extract` give the same rows as the notebook (the parity check in `product/tests/parity_spark.py` covers the current split).
