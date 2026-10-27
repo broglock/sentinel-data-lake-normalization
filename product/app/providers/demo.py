@@ -9,7 +9,7 @@ from typing import Any
 from app.demo.demo_data import build
 from app.engine import coverage as cov
 from app.engine import hunt as H
-from app.engine.indexer import index_group, prepare
+from app.engine.indexer import index_parts
 from app.providers.base import Provider
 
 PLANS = {"SecurityEvent": "Analytics", "SigninLogs": "Analytics", "CommonSecurityLog": "Analytics"}
@@ -41,7 +41,8 @@ class DemoProvider(Provider):
              "PaloAlto-PAN-OS", "Syslog", "Amazon Web Services", "Okta Single Sign-On"]]
         self.ents: list[dict] = []
         self.evs: list[dict] = []
-        self.by_group: dict[str, list[dict]] = {}
+        self.by_group: dict[str, list[dict]] = {}      # HuntEntity rows (rollup and _stats) per group
+        self.occ_by_group: dict[str, list[dict]] = {}  # occurrence rows per group (canary only)
         self.raw_by_group: dict[str, list[dict]] = {}
         self.canary_seq = 0
 
@@ -66,27 +67,25 @@ class DemoProvider(Provider):
 
     # ------------------------------------------------------------ index
     def reindex(self, groups: list[dict], vocab: dict) -> dict:
-        ents, evs, by_group, raw_by_group = [], [], {}, {}
+        ents, evs, by_group, occ_by_group, raw_by_group = [], [], {}, {}, {}
         with self.lock:
             for g in groups:
-                rows = self.raw.get(g["table"], [])
-                e, v = index_group(rows, g, vocab)
-                ents += e
-                evs += v
-                by_group[g["id"]] = e
-                raw_by_group[g["id"]] = prepare(rows, g)
-            self.ents, self.evs, self.by_group, self.raw_by_group = ents, evs, by_group, raw_by_group
+                p = index_parts(self.raw.get(g["table"], []), g, vocab)
+                ents += p["entity"]
+                evs += p["event"]
+                by_group[g["id"]], occ_by_group[g["id"]], raw_by_group[g["id"]] = p["entity"], p["occ"], p["base"]
+            self.ents, self.evs, self.by_group, self.occ_by_group, self.raw_by_group = ents, evs, by_group, occ_by_group, raw_by_group
         return {"groups": len(groups), "entityRows": len(ents), "eventRows": len(evs)}
 
     def coverage(self, groups: list[dict]) -> list[dict]:
         from app.config import settings
         with self.lock:
-            return [cov.group_coverage(g, self.raw_by_group.get(g["id"], []), self.by_group.get(g["id"], []),
-                                       settings.min_extraction, settings.min_template_match) for g in groups]
+            return [cov.group_coverage(g, self.by_group.get(g["id"], []), settings.min_extraction,
+                                       settings.min_template_match) for g in groups]
 
     def history(self, group: dict) -> list[dict]:
         with self.lock:
-            return cov.daily_history(group, self.raw_by_group.get(group["id"], []), self.by_group.get(group["id"], []))
+            return cov.daily_history(group, self.by_group.get(group["id"], []))
 
     # ------------------------------------------------------------ hunting
     def hunt(self, tool: str, **p: Any) -> list[dict]:
@@ -98,7 +97,7 @@ class DemoProvider(Provider):
         if tool == "hunt_entity":
             return H.hunt_entity(ents, p["entity_type"], p["value"], p.get("role", "*"), days)
         if tool == "auth_events":
-            return H.auth_events(ents, p["user"], p.get("result", "*"), days)
+            return H.auth_events(evs, p["user"], p.get("result", "*"), days)
         if tool == "network_events":
             return H.network_events(evs, p["ip"], days)
         if tool == "timeline":
@@ -116,17 +115,24 @@ class DemoProvider(Provider):
 
     def index_rows_for_group(self, group_id: str, limit: int = 20) -> list[dict]:
         with self.lock:
-            rows = self.by_group.get(group_id, [])
+            rows = [r for r in self.by_group.get(group_id, []) if r["EntityType"] != "_stats"]
+            rows = sorted(rows, key=lambda r: r["Hour"], reverse=True)
             return [_jsonable(r) for r in rows[:limit]]
 
-    def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None) -> list[dict]:
+    def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None,
+              last_time: str = "") -> list[dict]:
+        """Original rows behind an index row: by record key (HuntEvent row or a SampleKeys entry),
+        otherwise by time range and value (a HuntEntity row covers up to one hour)."""
+        keys = [k for k in record_key.split(",") if k]
         with self.lock:
-            if group and record_key:
+            if group and keys:
                 return [_jsonable({k: v for k, v in r.items() if not k.startswith("_")})
-                        for r in self.raw_by_group.get(group["id"], []) if r["_SourceRecordKey"] == record_key]
-            t = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+                        for r in self.raw_by_group.get(group["id"], []) if r["_SourceRecordKey"] in keys][:20]
+            t0 = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+            t1 = datetime.fromisoformat((last_time or event_time).replace("Z", "+00:00"))
             return [_jsonable(r) for r in self.raw.get(table, [])
-                    if abs((r["TimeGenerated"] - t).total_seconds()) <= 1 and value.lower() in json.dumps(r, default=str).lower()][:20]
+                    if t0 - timedelta(seconds=1) <= r["TimeGenerated"] <= t1 + timedelta(seconds=1)
+                    and value.lower() in json.dumps(r, default=str).lower()][:20]
 
     # ------------------------------------------------------------ tenant changes (simulated)
     def installed_solutions(self) -> list[dict]:
@@ -153,7 +159,7 @@ class DemoProvider(Provider):
         """Clone a recent raw row of the group, swap its source IP (or first entity value) for a
         canary value, add it to the raw table and re-index the group."""
         with self.lock:
-            ents = self.by_group.get(group["id"], [])
+            ents = self.occ_by_group.get(group["id"], [])
             pick = next((e for e in ents if e["EntityType"] == "ip"), None) or (ents[0] if ents else None)
             if not pick:
                 return {"ok": False, "reason": "The group has no indexed rows to copy"}
@@ -172,13 +178,13 @@ class DemoProvider(Provider):
                     new[k] = v
             self.raw[group["table"]].append(new)
         # re-index just this group
-        e, v = index_group(self.raw[group["table"]], group, vocab)
+        p = index_parts(self.raw[group["table"]], group, vocab)
         with self.lock:
             others = [x for x in self.ents if x["SourceGroup"] != group["id"]]
             other_ev = [x for x in self.evs if x["SourceGroup"] != group["id"]]
-            self.ents, self.evs = others + e, other_ev + v
-            self.by_group[group["id"]] = e
-            self.raw_by_group[group["id"]] = prepare(self.raw[group["table"]], group)
+            self.ents, self.evs = others + p["entity"], other_ev + p["event"]
+            self.by_group[group["id"]], self.occ_by_group[group["id"]] = p["entity"], p["occ"]
+            self.raw_by_group[group["id"]] = p["base"]
         return {"ok": True, "value": canary, "entityType": pick["EntityType"], "replaced": pick["Value"],
                 "raw": _jsonable(new)}
 

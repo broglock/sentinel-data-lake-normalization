@@ -12,7 +12,7 @@ function staticBullets(a, budget) {
   if (a.kind === "registry") {
     const g = a.payload.group, out = [];
     (g.exclude_text || []).forEach((t) => out.push(`Lines containing <code>${esc(t)}</code> are marked as noise and left out of the index.`));
-    out.push(g.engine === "kql_job" ? `Indexed by KQL jobs (${num(budget.kqlJobs)} of ${num(budget.limit)} jobs in use now).` : "Indexed by the hourly notebook; no KQL job is added.");
+    out.push(`Once approved, the group runs in the shared KQL job for <b>${esc(g.table)}</b> (${num(budget.kqlJobs)} of ${num(budget.limit)} jobs in use now) and the notebook stops reading it.`);
     return out;
   }
   return [

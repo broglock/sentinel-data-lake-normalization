@@ -14,6 +14,7 @@ the job definitions and the operator creates them in the Defender portal (Deploy
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from typing import Any
@@ -161,38 +162,63 @@ class AzureProvider(Provider):
         return self.lake(q)
 
     def _extra(self, tool: str, v: str, days: int) -> str:
-        head = ('let HuntIndexEntity = union isfuzzy=true HuntEntity_SPRK, HuntEntity_KQL;\n'
+        """timeline and related over the hourly rollup. Rows that share a SampleKeys entry came
+        from the same event, which is how other entities are found without per-event rows."""
+        head = ('let ix = union isfuzzy=true HuntEntity_SPRK, HuntEntity_KQL\n'
+                f'    | where Hour > ago({days}d) and EntityType != "_stats";\n'
                 f'let raw = tolower(trim(@"\\s", "{v}"));\n'
-                'let short = case(raw contains @"\\", tostring(split(raw, @"\\")[1]), raw contains "@", tostring(split(raw, "@")[0]), raw);\n'
-                f'let hits = HuntIndexEntity | where EventStartTime > ago({days}d) '
-                '| where ValueNorm in (raw, short) or tolower(Value) == raw;\n')
+                'let short = case(raw contains @"\\", tostring(split(raw, @"\\")[1]), raw contains "@", '
+                'tostring(split(raw, "@")[0]), raw);\n'
+                'let hits = ix | where ValueNorm in (raw, short) or tolower(Value) == raw;\n'
+                'let hitkeys = hits | mv-expand K = SampleKeys to typeof(string) | distinct SourceGroup, K;\n'
+                'let near = ix | where not(ValueNorm in (raw, short) or tolower(Value) == raw)\n'
+                '    | mv-expand K = SampleKeys to typeof(string)\n'
+                '    | join kind=inner hitkeys on SourceGroup, K\n'
+                '    | project SourceGroup, K, EntityType, Role, ValueNorm, Ent = strcat(EntityType, ":", Role, "=", Value);\n')
         if tool == "timeline":
-            return head + (f'hits | join kind=inner (HuntIndexEntity | where EventStartTime > ago({days}d) '
-                           '| project SourceGroup, SourceRecordKey, E = strcat(EntityType, ":", Role, "=", Value)) '
-                           'on SourceGroup, SourceRecordKey\n'
-                           '| summarize Entities = make_set(E, 20) by EventStartTime, SourceTable, SourceGroup, EventType, '
-                           'EventResult, MatchedAs = strcat(EntityType, ":", Role), Tier = MappingTier, SourceRecordKey\n'
+            return head + ('hits\n'
+                           '| extend SourceRecordKey = tostring(SampleKeys[0]), Keys = tostring(SampleKeys)\n'
+                           '| mv-expand K = SampleKeys to typeof(string)\n'
+                           '| join kind=leftouter (near | project SourceGroup, K, Ent) on SourceGroup, K\n'
+                           '| summarize Entities = make_set_if(Ent, isnotempty(Ent), 20) by EventStartTime = FirstSeen, LastSeen, '
+                           'Count, SourceTable, SourceGroup, EventType, EventResult, MatchedAs = strcat(EntityType, ":", Role), '
+                           'Tier = MappingTier, Value, SourceRecordKey, Keys\n'
+                           '| extend SampleKeys = todynamic(Keys) | project-away Keys\n'
                            '| order by EventStartTime asc | take 500')
-        return head + (f'hits | distinct SourceGroup, SourceRecordKey | join kind=inner (HuntIndexEntity '
-                       f'| where EventStartTime > ago({days}d)) on SourceGroup, SourceRecordKey\n'
-                       '| where ValueNorm !in (raw, short)\n'
-                       '| summarize Events = count(), Sources = make_set(SourceGroup), Roles = make_set(Role) '
-                       'by EntityType, Value = ValueNorm | order by array_length(Sources) desc, Events desc | take 25')
+        return head + ('near\n'
+                       '| summarize Events = dcount(strcat(SourceGroup, "|", K)), Sources = make_set(SourceGroup), '
+                       'Roles = make_set(Role) by EntityType, Value = ValueNorm\n'
+                       '| order by array_length(Sources) desc, Events desc, Value asc | take 25')
 
     def index_rows_for_group(self, group_id: str, limit: int = 20) -> list[dict]:
-        return self.lake(f'union isfuzzy=true HuntEntity_SPRK, HuntEntity_KQL | where EventStartTime > ago(1d) and SourceGroup == "{kql_str(group_id)}" '
-                         f'| take {int(limit)}')
+        rows = self.lake('union isfuzzy=true HuntEntity_SPRK, HuntEntity_KQL\n'
+                         f'| where Hour > ago(1d) and SourceGroup == "{kql_str(group_id)}" and EntityType != "_stats"\n'
+                         f'| order by Hour desc | take {int(limit)}')
+        for r in rows:
+            if isinstance(r.get("SampleKeys"), str):
+                try:
+                    r["SampleKeys"] = json.loads(r["SampleKeys"])
+                except ValueError:
+                    r["SampleKeys"] = []
+        return rows
 
-    def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None) -> list[dict]:
+    def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None,
+              last_time: str = "") -> list[dict]:
+        """Original rows behind an index row. A HuntEvent row or a SampleKeys entry gives a record
+        key; otherwise the HuntEntity row's FirstSeen..LastSeen range and value are used."""
         if not TABLE_NAME.match(table):
             raise ValueError("bad table name")
-        if group and record_key and group.get("record_key"):
+        keys = [k for k in record_key.split(",") if k][:10]
+        if group and keys and group.get("record_key"):
             tc = group.get("time_column", "TimeGenerated")
-            return self.lake(f'let t = todatetime("{kql_str(event_time)}");\n{table}\n'
-                             f'| where {tc} between ((t - 1s) .. (t + 1s))\n'
-                             f'| where tostring({group["record_key"]}) == "{kql_str(record_key)}"\n| take 5')
+            ks = ", ".join(f'"{kql_str(k)}"' for k in keys)
+            return self.lake(f'let t0 = todatetime("{kql_str(event_time)}");\n'
+                             f'let t1 = todatetime("{kql_str(last_time or event_time)}");\n{table}\n'
+                             f'| where {tc} between ((t0 - 1s) .. (t1 + 1s))\n'
+                             f'| where tostring({group["record_key"]}) in ({ks})\n| take 20')
         q = TOOLS["pivot_raw"]["query"]
-        for k, v in {"SourceTable": table, "EventStartTime": kql_str(event_time), "Value": kql_str(value)}.items():
+        for k, v in {"SourceTable": table, "FirstSeen": kql_str(event_time), "LastSeen": kql_str(last_time or event_time),
+                     "Value": kql_str(value)}.items():
             q = q.replace("{" + k + "}", v)
         return self.lake(q)
 

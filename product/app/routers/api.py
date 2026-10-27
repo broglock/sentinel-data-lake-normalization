@@ -325,12 +325,12 @@ def hunt_search(table: str, text: str, hours: float = 24, c=Depends(core), _: Us
 
 
 @router.get("/hunt/pivot", tags=["hunt"])
-def hunt_pivot(table: str, time: str, value: str, key: str = "", group: str = "", c=Depends(core),
+def hunt_pivot(table: str, time: str, value: str, key: str = "", group: str = "", until: str = "", c=Depends(core),
                _: User = Depends(require("viewer"))):
     g = next((x for x in c.index_groups() if x["id"] == group), None) if group else None
     from app.kit.generate import complete_group
     try:
-        return c.p.pivot(table, time, value, key, complete_group(g) if g else None)
+        return c.p.pivot(table, time, value, key, complete_group(g) if g else None, until)
     except Exception as e:  # noqa: BLE001
         _err(e)
 

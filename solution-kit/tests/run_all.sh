@@ -20,7 +20,7 @@ python3 - "$KIT/mcp/tools.yaml" "$OUT/mcp" <<'PY'
 import sys, yaml
 for t in yaml.safe_load(open(sys.argv[1]))["tools"]:
     q = t["query"].replace("{SourceTable}", "Syslog").replace("{Table}", "Syslog") \
-                  .replace("{EventStartTime}", "2026-10-18T09:20:00Z")
+                  .replace("{FirstSeen}", "2026-10-18T09:20:00Z").replace("{LastSeen}", "2026-10-18T09:59:00Z")
     open(f"{sys.argv[2]}/{t['name']}.kql", "w").write(q)
 PY
 node kql_check.js "$OUT"/mcp/*.kql

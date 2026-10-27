@@ -14,10 +14,11 @@ import yaml
 
 from app.config import APP_DIR, settings
 from app.engine import guide, miner
-from app.engine.indexer import index_group
+from app.engine.indexer import index_parts
 from app.kit import asim_expand
-from app.kit.generate import (ASIM_OUTPUT_FIELDS, ENTITY_COLUMNS, EVENT_COLUMNS, build_entity_query,
-                              build_event_query, complete_group, notebook_config, slug)
+from app.kit.generate import (ASIM_OUTPUT_FIELDS, ENTITY_COLUMNS, EVENT_COLUMNS, build_entity_job, build_entity_query,
+                              build_event_job, build_event_query, complete_group, engine_of, notebook_config,
+                              plan_jobs, slug)
 from app.providers.base import Provider
 from app.store import Store
 
@@ -85,7 +86,7 @@ class Core:
             return None
         return {"id": f"{t['name']}:auto", "table": t["name"], "filter": f"isnotempty({text})",
                 "spark_filter": f"{text} IS NOT NULL", "vendor": "", "product": "", "schema": "",
-                "engine": "notebook", "layer": "classifier", "record_key_fields": [text], "text_column": text,
+                "status": "proposed", "layer": "classifier", "record_key_fields": [text], "text_column": text,
                 "templates": [], "tier": 2, "auto": True}
 
     def validate_group(self, g: dict) -> list[str]:
@@ -258,17 +259,17 @@ class Core:
         errs = self.validate_group(group)
         if errs:
             return {"group": group, "errors": errs}
-        ents, evs = index_group(rows, group, self.vocab)
+        parts = index_parts(rows, group, self.vocab)
+        ents, evs = parts["occ"], parts["event"]
         from app.engine.coverage import group_coverage
-        from app.engine.indexer import prepare
-        c = group_coverage(group, prepare(rows, group), ents, settings.min_extraction, settings.min_template_match)
+        c = group_coverage(group, parts["entity"], settings.min_extraction, settings.min_template_match)
         keys = []
         for e in ents:
             if e["SourceRecordKey"] not in keys:
                 keys.append(e["SourceRecordKey"])
         sample_keys = keys[:8]
         by_key = {}
-        for r in prepare(rows, group):
+        for r in parts["base"]:
             if r["_SourceRecordKey"] in sample_keys:
                 by_key[r["_SourceRecordKey"]] = {k: v for k, v in r.items() if not k.startswith("_")}
         pairs = [{"raw": _j(by_key.get(k, {})), "index": [_j(e) for e in ents if e["SourceRecordKey"] == k]} for k in sample_keys]
@@ -276,7 +277,7 @@ class Core:
         return {"group": group, "errors": [], "coverage": c,
                 "byEntity": _count(ents, lambda e: f"{e['EntityType']}:{e['Role']}"),
                 "byResult": _count(list({e["SourceRecordKey"]: e for e in ents}.values()), lambda e: e["EventResult"] or "(none)"),
-                "pairs": pairs, "eventRows": len(evs),
+                "pairs": pairs, "eventRows": len(evs), "rollupRows": sum(1 for e in parts["entity"] if e["EntityType"] != "_stats"),
                 "kql": build_entity_query(cg, {}, self.vocab), "yaml": yaml.safe_dump(group, sort_keys=False)}
 
     # ================================================================ ASIM parser expansion
@@ -302,17 +303,16 @@ class Core:
     def build(self) -> dict:
         groups = [complete_group(g) for g in self.live_groups() + [g for g in self.index_groups() if g.get("auto")]]
         files, jobs = {}, []
-        for g in groups:
-            if g.get("engine", "notebook") != "kql_job":
-                continue
-            name = slug(g["id"])
-            files[f"kql_jobs/{name}.entity.kql"] = build_entity_query(g, {}, self.vocab)
-            jobs.append({"name": f"lakehunt-{name}-entity", "group": g["id"], "output": settings.entity_table.replace("_SPRK", "_KQL"),
+        # approved groups run as KQL jobs, batched per source table: one entity job and at most one event job each
+        for name, members in plan_jobs(groups).items():
+            ids = [g["id"] for g in members]
+            files[f"kql_jobs/{name}.entity.kql"] = build_entity_job(members, {}, self.vocab)
+            jobs.append({"name": f"lakehunt-{name}-entity", "groups": ids, "output": settings.entity_table.replace("_SPRK", "_KQL"),
                          "file": f"kql_jobs/{name}.entity.kql"})
-            ev = build_event_query(g, {}, self.vocab)
+            ev = build_event_job(members, {}, self.vocab)
             if ev:
                 files[f"kql_jobs/{name}.event.kql"] = ev
-                jobs.append({"name": f"lakehunt-{name}-event", "group": g["id"], "output": settings.event_table.replace("_SPRK", "_KQL"),
+                jobs.append({"name": f"lakehunt-{name}-event", "groups": ids, "output": settings.event_table.replace("_SPRK", "_KQL"),
                              "file": f"kql_jobs/{name}.event.kql"})
         cfg = notebook_config(groups, self.vocab)
         files["notebook/notebook_config.json"] = json.dumps(cfg, indent=1, default=str)
@@ -322,7 +322,7 @@ class Core:
         files["registry.yaml"] = yaml.safe_dump({"version": 1, "groups": self.live_groups()}, sort_keys=False)
         files["tables.json"] = json.dumps({"HuntEntity": ENTITY_COLUMNS, "HuntEvent": EVENT_COLUMNS}, indent=1)
         files["DEPLOY.md"] = DEPLOY_STEPS.format(n=len(jobs), limit=settings.kql_job_limit)
-        nb_groups = [g["id"] for g in groups if g.get("engine", "notebook") == "notebook"]
+        nb_groups = [g["id"] for g in groups if engine_of(g) == "notebook"]
         return {"files": files, "jobs": jobs, "notebookGroups": nb_groups,
                 "budget": {"kqlJobs": len(jobs), "limit": settings.kql_job_limit, "soft": settings.kql_job_soft_limit,
                            "warning": len(jobs) > settings.kql_job_soft_limit},
@@ -369,12 +369,13 @@ class Core:
         else:
             checks.append({"check": "coverage", "label": "Coverage numbers", "passed": False, "detail": "No coverage row yet"})
         # hand check: the operator confirms that sampled raw rows and their index rows agree
+        # HuntEntity rows are hourly rollups; each carries SampleKeys, so a key leads to one raw row
         rows = self.p.index_rows_for_group(gid, 60)
-        sample_keys = list(dict.fromkeys(r["SourceRecordKey"] for r in rows))[:5]
+        sample_keys = list(dict.fromkeys(k for r in rows for k in (r.get("SampleKeys") or [])[:1]))[:5]
         pairs = []
         for k in sample_keys:
-            idx = [r for r in rows if r["SourceRecordKey"] == k]
-            raw = self.p.pivot(g["table"], idx[0]["EventStartTime"], idx[0]["Value"], k, complete_group(g))
+            idx = [r for r in rows if k in (r.get("SampleKeys") or [])]
+            raw = self.p.pivot(g["table"], idx[0]["FirstSeen"], idx[0]["Value"], k, complete_group(g), idx[0]["LastSeen"])
             pairs.append({"key": k, "index": idx, "raw": raw[:1]})
         checks.append({"check": "hand", "label": "Hand check of sample rows",
                        "passed": bool(hand_check) if hand_check is not None else None,
@@ -455,7 +456,9 @@ class Core:
         kind, p = a["kind"], a["payload"]
         try:
             if kind == "registry":
-                g = p["group"]
+                # an approved mapping moves to the shared KQL job for its table; the notebook stops reading it
+                g = {**p["group"], "status": "approved"}
+                g.pop("engine", None)
                 self.store.registry_put(g, "live", user, f"approved #{aid}")
                 result = {"reindex": self.reindex(), "message": "Registry entry is live. In live mode, rebuild and "
                           "redeploy the jobs from the Deploy screen."}

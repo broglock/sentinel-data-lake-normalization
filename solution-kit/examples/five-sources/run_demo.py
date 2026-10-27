@@ -2,9 +2,11 @@
 
 1. Generates lake KQL for all five groups and writes it to ./kql/ (check it with
    tests/kql_check.js).
-2. Runs the long-tail notebook engine (notebooks/02_index_longtail.py) over sample raw
-   rows for all five sources, exactly as the lake notebook would.
-3. Runs the hunt_value and auth_events MCP tool logic over the resulting index.
+2. Runs the notebook engine (notebooks/02_index_longtail.py) over sample raw rows for all
+   five sources, exactly as the lake notebook would: HuntEntity hourly rollup rows, _stats
+   rows and HuntEvent rows. (In the lake the approved groups run as KQL jobs with the same
+   output; the KQL is checked separately.)
+3. Runs the hunt_value (HuntEntity) and auth_events (HuntEvent) MCP tool logic.
 4. Writes everything to output.md.
 
 Needs pyspark + Java:  python examples/five-sources/run_demo.py
@@ -12,6 +14,7 @@ Needs pyspark + Java:  python examples/five-sources/run_demo.py
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,11 +26,13 @@ from pyspark.sql import SparkSession, functions as F
 HERE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.dirname(os.path.dirname(HERE))
 
-# ---------------------------------------------------------------- 1. generate KQL (all as KQL jobs)
+# ---------------------------------------------------------------- 1. generate KQL (all approved, KQL jobs)
 reg = yaml.safe_load(open(os.path.join(HERE, "five_sources.yaml")))
 for g in reg["groups"]:
-    g["engine"] = "kql_job"
+    g["status"] = "approved"
 tmp = tempfile.mkdtemp()
+for d in ("kql_out", "kql_out_reviewed"):
+    shutil.rmtree(os.path.join(HERE, d), ignore_errors=True)
 all_kql = os.path.join(tmp, "all_kql.yaml")
 yaml.safe_dump(reg, open(all_kql, "w"), sort_keys=False)
 subprocess.run([sys.executable, os.path.join(KIT, "generator", "generate.py"), "--registry", all_kql,
@@ -95,17 +100,24 @@ spec.loader.exec_module(nb)
 p = FakeProvider()
 counts = nb.run(spark, p, cfg, now=NOW)
 
-ent = spark.createDataFrame(p.saved["HuntEntity_SPRK"])
+saved = spark.createDataFrame(p.saved["HuntEntity_SPRK"])
+ent = saved.where(F.col("EntityType") != "_stats")
 ddl = ", ".join(f"{c} {dict(string='string', int='int', datetime='timestamp')[t]}" for c, t in cfg["event_columns"])
 evt = spark.createDataFrame([{c: r.get(c) for c, _ in cfg["event_columns"]} for r in p.saved["HuntEvent_SPRK"]], ddl)
 
+
 # ---------------------------------------------------------------- 3. MCP tool logic
+def short(col):
+    c = F.lower(F.trim(col))
+    return F.when(c.contains("\\"), F.split(c, r"\\").getItem(1)).when(c.contains("@"), F.split(c, "@").getItem(0)).otherwise(c)
+
+
 def hunt_value(value: str):
     v = value.strip().lower()
     vshort = v.split("\\")[1] if "\\" in v else (v.split("@")[0] if "@" in v else v)
     return (ent.where(F.col("ValueNorm").isin(v, vshort) | (F.lower("Value") == v))
                .groupBy("SourceTable", "SourceGroup", "EntityType")
-               .agg(F.count("*").alias("Events"),
+               .agg(F.sum("Count").alias("Events"),
                     F.array_join(F.array_sort(F.collect_set("Role")), ", ").alias("Roles"),
                     F.array_join(F.array_sort(F.collect_set(F.col("MappingTier").cast("string"))), ", ").alias("Tiers"),
                     F.array_join(F.array_sort(F.collect_set("EventResult")), ", ").alias("Results"))
@@ -113,16 +125,20 @@ def hunt_value(value: str):
 
 
 def auth_events(user: str):
+    """From HuntEvent: Tier 1 sign-in events with their result and source IP."""
     v = user.strip().lower()
     vshort = v.split("\\")[1] if "\\" in v else (v.split("@")[0] if "@" in v else v)
-    users = ent.where((F.col("EntityType") == "user") & (F.col("ValueNorm") == vshort) &
-                      (F.col("MappingTier") == 1) & (F.col("EventType").isin("Logon", "Logoff")))
-    src = ent.where((F.col("EntityType") == "ip") & (F.col("Role") == "Src")) \
-             .select("SourceRecordKey", F.col("ValueNorm").alias("SrcIpAddr"))
-    return (users.join(src, "SourceRecordKey", "left")
-                 .select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
-                         "EventResult", F.col("Value").alias("User"), "SrcIpAddr")
-                 .orderBy("Time"))
+    u = F.when(F.col("TargetUsername") != "", F.col("TargetUsername")).otherwise(F.col("ActorUsername"))
+    return (evt.where(F.col("EventType").isin("Logon", "Logoff") & (short(u) == vshort))
+               .select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
+                       "EventResult", u.alias("User"), "SrcIpAddr")
+               .orderBy("Time"))
+
+
+def stats_md(df):
+    st = df.where(F.col("EntityType") == "_stats").groupBy("SourceGroup").pivot("Role", list(cfg["stats_roles"])) \
+           .agg(F.sum("Count")).orderBy("SourceGroup")
+    return md(st)
 
 
 def md(df, cols=None):
@@ -137,13 +153,22 @@ def md(df, cols=None):
 # ---------------------------------------------------------------- 4. write output.md
 parts = ["# Five sources: actual output of the demo run", "",
          f"Rows indexed per group: {counts}", ""]
+ROLLUP_COLS = ["Hour", "EntityType", "Role", "Value", "ValueNorm", "ValueType", "EventType", "EventResult",
+               "MappingLayer", "MappingTier", "Count", "FirstSeen"]
+
+
+def rollup_md(df):
+    return md(df.select(F.date_format("Hour", "HH:mm").alias("Hour"), *ROLLUP_COLS[1:-1],
+                        F.date_format("FirstSeen", "HH:mm:ss").alias("FirstSeen"))
+                .orderBy("EntityType", "Role", "ValueNorm", "EventResult"))
+
+
+parts += ["HuntEntity is an hourly rollup: one row per hour, group, entity, role and result, with Count, "
+          "FirstSeen, LastSeen and up to three sample record keys for the pivot to raw rows.", ""]
 for g in cfg["groups"]:
-    parts += [f"## {g['id']}", "",
-              md(ent.where(F.col("SourceGroup") == g["id"])
-                    .select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "EntityType", "Role",
-                            "Value", "ValueNorm", "ValueType", "EventType", "EventResult", "MappingLayer",
-                            "MappingTier").orderBy("Time", "EntityType")), ""]
-parts += ["## HuntEvent rows (Tier 1, structured sources)", "",
+    parts += [f"## {g['id']}", "", rollup_md(ent.where(F.col("SourceGroup") == g["id"])), ""]
+parts += ["## _stats rows (what notebook 03 reads for coverage)", "", stats_md(saved), ""]
+parts += ["## HuntEvent rows (Tier 1 field rules and Tier 1 templates)", "",
           md(evt.select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "SourceGroup", "EventType",
                         "EventResult", "SrcIpAddr", "DstIpAddr", "DstPortNumber", "TargetUsername", "SrcUsername",
                         "DvcHostname", "DvcAction").orderBy("Time")), ""]
@@ -165,6 +190,7 @@ for g in reg["groups"]:
     if g["id"] == "VpnAppliance_CL:raw":
         g["templates"] = vpn_templates
         g["schema"] = "Authentication"
+        g["status"] = "approved"
 yaml.safe_dump(reg, open(all_kql, "w"), sort_keys=False)
 subprocess.run([sys.executable, os.path.join(KIT, "generator", "generate.py"), "--registry", all_kql,
                 "--vocab", os.path.join(KIT, "registry", "vocab.yaml"), "--out", os.path.join(HERE, "kql_out_reviewed")],
@@ -173,13 +199,14 @@ cfg2 = json.load(open(os.path.join(HERE, "kql_out_reviewed", "notebook", "notebo
 cfg2["groups"] = [dict(g, engine="notebook") for g in cfg2["groups"] if g["id"] == "VpnAppliance_CL:raw"]
 p2 = FakeProvider()
 nb.run(spark, p2, cfg2, now=NOW)
-vpn = spark.createDataFrame(p2.saved["HuntEntity_SPRK"])
+vpn_all = spark.createDataFrame(p2.saved["HuntEntity_SPRK"])
+vpn = vpn_all.where(F.col("EntityType") != "_stats")
 ent = ent.where(F.col("SourceGroup") != "VpnAppliance_CL:raw").unionByName(vpn)
+evt = evt.unionByName(spark.createDataFrame(
+    [{c: r.get(c) for c, _ in cfg["event_columns"]} for r in p2.saved.get("HuntEvent_SPRK", [])], ddl))
 parts += ["# After review: VPN appliance templates approved", "",
-          "## VpnAppliance_CL:raw (now Tier 1)", "",
-          md(vpn.select(F.date_format("EventStartTime", "HH:mm:ss").alias("Time"), "EntityType", "Role", "Value",
-                        "ValueNorm", "ValueType", "EventType", "EventResult", "MappingLayer", "MappingTier")
-                .orderBy("Time", "EntityType")), "",
+          "## VpnAppliance_CL:raw (now Tier 1)", "", rollup_md(vpn), "",
+          "## VpnAppliance_CL:raw _stats rows", "", stats_md(vpn_all), "",
           "## hunt_value('203.0.113.45') after review", "", md(hunt_value("203.0.113.45")), "",
           "## auth_events('CONTOSO\\\\jsmith') after review", "", md(auth_events("CONTOSO\\jsmith")), ""]
 open(os.path.join(HERE, "output.md"), "w").write("\n".join(parts))

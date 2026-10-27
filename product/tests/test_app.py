@@ -193,10 +193,15 @@ def test_generated_kql_parses(client, tmp_path):
     import yaml
     for t in yaml.safe_load(files["mcp/tools.yaml"])["tools"]:
         (tmp_path / f"tool_{t['name']}.kql").write_text(t["query"].replace("{SourceTable}", "Syslog").replace("{Table}", "Syslog")
-                                                         .replace("{EventStartTime}", "2026-10-18T09:20:00Z"))
+                                                         .replace("{FirstSeen}", "2026-10-18T09:20:00Z")
+                                                         .replace("{LastSeen}", "2026-10-18T09:59:00Z"))
+    from app.providers.azure import AzureProvider
+    for tool in ("timeline", "related"):
+        (tmp_path / f"extra_{tool}.kql").write_text(AzureProvider._extra(None, tool, "jsmith", 7))
     # schemas: demo tables + index tables
     from app.kit.generate import ENTITY_COLUMNS, EVENT_COLUMNS
-    kt = {"string": "string", "int": "int", "datetime": "datetime", "real": "real", "bool": "bool"}
+    kt = {"string": "string", "int": "int", "long": "long", "datetime": "datetime", "real": "real", "bool": "bool",
+          "dynamic": "dynamic"}
     schemas = {t["name"]: "(" + ", ".join(f"{c['name']}:{kt.get(c['type'], 'string')}" for c in t["columns"]) + ")"
                for t in core.p.tables()}
     ent = "(TimeGenerated:datetime, " + ", ".join(f"{c}:{t}" for c, t in ENTITY_COLUMNS) + ")"

@@ -1,7 +1,10 @@
-"""Coverage metrics per grammar group (same definitions as kit/notebooks/03_coverage.py)."""
+"""Coverage metrics per grammar group (same definitions as kit/notebooks/03_coverage.py).
+
+Everything comes from the group's HuntEntity rows: the _stats rows written by each indexing run
+(RowsRead, RowsWithEntity, RowsTemplateMatched) and the hourly rollup rows. No source table is read.
+"""
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -18,43 +21,44 @@ def status_of(c: dict, min_extraction: float, min_template: float) -> str:
     return "ok"
 
 
-def group_coverage(group: dict, raw: list[dict], ents: list[dict], min_extraction: float = 0.9,
-                   min_template: float = 0.7) -> dict:
-    keys_with = {e["SourceRecordKey"] for e in ents}
-    n = len(raw)
-    text = group.get("text_column")
-    tmatch = None
-    if text and group.get("templates"):
-        hit = sum(1 for r in raw if any(re.search(t["regex"], str(r.get(text) or "")) for t in group["templates"]))
-        tmatch = hit / n if n else 0.0
-    unknown = sum(1 for e in ents if e["Role"] == "Unknown") / len(ents) if ents else 0.0
+def _sums(ents: list[dict]) -> dict[str, int]:
+    s: dict[str, int] = defaultdict(int)
+    for e in ents:
+        if e["EntityType"] == "_stats":
+            s[e["Role"]] += int(e["Count"])
+    return s
+
+
+def group_coverage(group: dict, ents: list[dict], min_extraction: float = 0.9, min_template: float = 0.7) -> dict:
+    """`ents` are the group's HuntEntity rows (rollup plus _stats)."""
+    s = _sums(ents)
+    rows = [e for e in ents if e["EntityType"] != "_stats"]
+    n, indexed, templ = s.get("RowsRead", 0), s.get("RowsWithEntity", 0), s.get("RowsTemplateMatched", 0)
+    occ = sum(int(e["Count"]) for e in rows)
+    unknown = sum(int(e["Count"]) for e in rows if e["Role"] == "Unknown")
+    has_tpl = bool(group.get("text_column") and group.get("templates"))
     tier = 1 if (group.get("fields") or group.get("templates")) and int(group.get("tier", 1)) == 1 else 2
-    last = max((e["EventStartTime"] for e in ents), default=None)
+    last = max((e["LastSeen"] for e in rows), default=None)
     c = {"SourceGroup": group["id"], "SourceTable": group["table"], "Tier": tier, "Layer": group.get("layer", ""),
-         "Engine": group.get("engine", "notebook"), "RawRows": n, "IndexedRows": len(keys_with),
-         "EntityRows": len(ents), "ExtractionRate": round(len(keys_with) / n, 4) if n else 0.0,
-         "TemplateMatchRate": round(tmatch, 4) if tmatch is not None else None,
-         "UnknownRoleShare": round(unknown, 4),
+         "Engine": group.get("engine", "notebook"), "RawRows": n, "IndexedRows": indexed,
+         "EntityRows": occ, "RollupRows": len(rows), "ExtractionRate": round(indexed / n, 4) if n else 0.0,
+         "TemplateMatchRate": round(templ / n, 4) if (has_tpl and n) else (0.0 if has_tpl else None),
+         "UnknownRoleShare": round(unknown / occ, 4) if occ else 0.0,
          "LastIndexed": last.strftime("%Y-%m-%dT%H:%M:%SZ") if isinstance(last, datetime) else None}
     c["Status"] = status_of(c, min_extraction, min_template)
     return c
 
 
-def daily_history(group: dict, raw: list[dict], ents: list[dict], days: int = 7) -> list[dict]:
-    tc = group.get("time_column", "TimeGenerated")
+def daily_history(group: dict, ents: list[dict], days: int = 7) -> list[dict]:
+    """Raw and indexed rows per day from the hourly _stats rows."""
     today = datetime.now(timezone.utc).date()
-    raw_by = defaultdict(int)
-    for r in raw:
-        t = r.get(tc)
-        if isinstance(t, datetime):
-            raw_by[t.date()] += 1
-    keys_by = defaultdict(set)
+    by: dict = defaultdict(lambda: defaultdict(int))
     for e in ents:
-        keys_by[e["EventStartTime"].date()].add(e["SourceRecordKey"])
+        if e["EntityType"] == "_stats" and isinstance(e["Hour"], datetime):
+            by[e["Hour"].date()][e["Role"]] += int(e["Count"])
     out = []
     for i in range(days - 1, -1, -1):
         d = today - timedelta(days=i)
-        n = raw_by.get(d, 0)
-        out.append({"day": d.isoformat(), "raw": n, "indexed": len(keys_by.get(d, ())),
-                    "extraction": round(len(keys_by.get(d, ())) / n, 4) if n else None})
+        n, k = by[d]["RowsRead"], by[d]["RowsWithEntity"]
+        out.append({"day": d.isoformat(), "raw": n, "indexed": k, "extraction": round(k / n, 4) if n else None})
     return out

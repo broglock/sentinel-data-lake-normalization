@@ -15,7 +15,8 @@ import re
 from datetime import datetime
 from typing import Any, Iterable
 
-from app.kit.generate import CLASSIFIER, ENTITY_COLUMNS, EVENT_COLUMNS, complete_group
+from app.kit.generate import (CLASSIFIER, ENTITY_COLUMNS, EVENT_COLUMNS, OCC_COLUMNS, ROLLUP_KEYS, SAMPLE_KEYS,
+                              complete_group, event_templates, slot_asim)
 
 Row = dict[str, Any]
 
@@ -195,7 +196,8 @@ def template_hits(text: str, templates: list[dict]) -> list[tuple[dict, re.Match
     return out
 
 
-def entity_rows(rows: Iterable[Row], group: dict, vocab: dict) -> list[dict]:
+def occurrence_rows(rows: Iterable[Row], group: dict, vocab: dict) -> list[dict]:
+    """One row per entity occurrence (the shape inside every job, before the hourly rollup)."""
     tier = int(group.get("tier", 2))
     fields = [f for f in group.get("fields", []) if f.get("entity")]
     consts = [c for c in group.get("constant_entities", []) if c.get("entity")]
@@ -235,7 +237,58 @@ def entity_rows(rows: Iterable[Row], group: dict, vocab: dict) -> list[dict]:
             if n is None:
                 continue
             r = {**meta, **e, "Value": n[0], "ValueType": n[1], "ValueNorm": n[2]}
-            out.append({c: r.get(c) for c, _ in ENTITY_COLUMNS})
+            out.append({c: r.get(c) for c, _ in OCC_COLUMNS})
+    return out
+
+
+def _hour(t: datetime) -> datetime:
+    return t.replace(minute=0, second=0, microsecond=0)
+
+
+def rollup_rows(occ: list[dict]) -> list[dict]:
+    """HuntEntity rows: one per hour, group, entity, role and result, as notebook 02 builds them.
+    Value is the smallest original form and SampleKeys the first record keys in sort order."""
+    agg: dict[tuple, dict] = {}
+    for o in occ:
+        k = (_hour(o["EventStartTime"]),) + tuple(o[c] for c in ROLLUP_KEYS)
+        a = agg.get(k)
+        if a is None:
+            a = agg[k] = {"Hour": k[0], **{c: o[c] for c in ROLLUP_KEYS}, "Count": 0, "Value": o["Value"],
+                          "FirstSeen": o["EventStartTime"], "LastSeen": o["EventStartTime"], "_keys": set()}
+        a["Count"] += 1
+        a["Value"] = min(a["Value"], o["Value"])
+        a["FirstSeen"] = min(a["FirstSeen"], o["EventStartTime"])
+        a["LastSeen"] = max(a["LastSeen"], o["EventStartTime"])
+        a["_keys"].add(o["SourceRecordKey"])
+    out = []
+    for a in agg.values():
+        a["SampleKeys"] = sorted(a.pop("_keys"))[:SAMPLE_KEYS]
+        out.append({c: a.get(c) for c, _ in ENTITY_COLUMNS})
+    return out
+
+
+def stats_rows(base: list[Row], occ: list[dict], group: dict) -> list[dict]:
+    """_stats rows per hour: RowsRead, RowsWithEntity and (text groups with templates) RowsTemplateMatched."""
+    def bucket(items, key_of):
+        b: dict[datetime, dict] = {}
+        for t, key in items:
+            x = b.setdefault(_hour(t), {"keys": set(), "n": 0, "lo": t, "hi": t})
+            x["n"] += 1
+            x["keys"].add(key_of(key))
+            x["lo"], x["hi"] = min(x["lo"], t), max(x["hi"], t)
+        return b
+    parts = [("RowsRead", bucket([(r["_EventStartTime"], r["_SourceRecordKey"]) for r in base], id), "n"),
+             ("RowsWithEntity", bucket([(o["EventStartTime"], o["SourceRecordKey"]) for o in occ], str), "keys")]
+    if group.get("text_column") and group.get("templates"):
+        parts.append(("RowsTemplateMatched", bucket([(o["EventStartTime"], o["SourceRecordKey"]) for o in occ
+                                                     if o["MappingLayer"] == "template"], str), "keys"))
+    out = []
+    for role, b, how in parts:
+        for h, x in b.items():
+            out.append({c: "" for c, t in ENTITY_COLUMNS if t == "string"} | {
+                "Hour": h, "FirstSeen": x["lo"], "LastSeen": x["hi"], "SourceTable": group["table"],
+                "SourceGroup": group["id"], "EntityType": "_stats", "Role": role, "MappingTier": None,
+                "Count": x["n"] if how == "n" else len(x["keys"]), "SampleKeys": []})
     return out
 
 
@@ -252,28 +305,52 @@ def _clean(name: str, value: str, nulls: list[str]) -> str:
     return c
 
 
+_EVENT_NAMES = {c for c, _ in EVENT_COLUMNS}
+
+
+def _event_record(mapped: dict) -> dict:
+    rec = {}
+    for name, typ in EVENT_COLUMNS:
+        v = mapped.get(name)
+        if typ == "int":
+            rec[name] = int(v) if isinstance(v, (int, str)) and str(v).lstrip("-").isdigit() else None
+        elif typ == "datetime":
+            rec[name] = v
+        else:
+            rec[name] = "" if v is None else str(v)
+    return rec
+
+
 def event_rows(rows: Iterable[Row], group: dict, vocab: dict) -> list[dict]:
-    if int(group.get("tier", 2)) != 1 or not group.get("fields"):
-        return []
+    """HuntEvent rows: Tier 1 groups with field rules, and Tier 1 templates on text sources."""
     nulls = vocab.get("null_values", [])
+    by_fields = int(group.get("tier", 2)) == 1 and bool(group.get("fields"))
+    templates = event_templates(group)
+    if not by_fields and not templates:
+        return []
+    consts = [c for c in group.get("constant_entities", []) if c.get("asim")]
+    text = group.get("text_column")
     out = []
     for row in rows:
-        mapped: dict[str, Any] = {}
-        for f in group["fields"] + group.get("constant_entities", []):
-            if f.get("asim"):
-                mapped[f["asim"]] = _clean(f["asim"], field_value(row, f), nulls)
-        mapped.update(_meta(row, group, event_type_value(row, group), result_value(row, group, vocab)))
-        mapped["MappingTier"] = 1
-        rec = {}
-        for name, typ in EVENT_COLUMNS:
-            v = mapped.get(name)
-            if typ == "int":
-                rec[name] = int(v) if isinstance(v, (int, str)) and str(v).lstrip("-").isdigit() else None
-            elif typ == "datetime":
-                rec[name] = v
-            else:
-                rec[name] = "" if v is None else str(v)
-        out.append(rec)
+        if by_fields:
+            mapped: dict[str, Any] = {}
+            for f in group["fields"] + consts:
+                if f.get("asim"):
+                    mapped[f["asim"]] = _clean(f["asim"], field_value(row, f), nulls)
+            mapped.update(_meta(row, group, event_type_value(row, group), result_value(row, group, vocab)))
+            mapped["MappingTier"] = 1
+            out.append(_event_record(mapped))
+        if templates:
+            body = _s(row.get(text))
+            for t, m in template_hits(body, templates):
+                mapped = {c["asim"]: _clean(c["asim"], field_value(row, c), nulls) for c in consts}
+                for name, slot in (t.get("slots") or {}).items():
+                    col = slot_asim(slot or {})
+                    if col and col in _EVENT_NAMES:
+                        mapped[col] = _clean(col, m.group(name) or "", nulls)
+                mapped.update(_meta(row, group, t.get("event_type", ""), t.get("event_result", "")))
+                mapped["MappingTier"] = 1
+                out.append(_event_record(mapped))
     return out
 
 
@@ -316,6 +393,16 @@ def prepare(rows: Iterable[Row], group: dict) -> list[Row]:
     return out
 
 
-def index_group(rows: Iterable[Row], group: dict, vocab: dict) -> tuple[list[dict], list[dict]]:
+def index_parts(rows: Iterable[Row], group: dict, vocab: dict) -> dict[str, list]:
+    """Everything one indexing pass produces: the prepared raw rows, the occurrence rows
+    (intermediate), the HuntEntity rows (hourly rollup plus _stats) and the HuntEvent rows."""
     base = prepare(rows, group)
-    return entity_rows(base, group, vocab), event_rows(base, group, vocab)
+    occ = occurrence_rows(base, group, vocab)
+    return {"base": base, "occ": occ, "entity": rollup_rows(occ) + stats_rows(base, occ, group),
+            "event": event_rows(base, group, vocab)}
+
+
+def index_group(rows: Iterable[Row], group: dict, vocab: dict) -> tuple[list[dict], list[dict]]:
+    """HuntEntity rows (rollup and _stats) and HuntEvent rows for one group."""
+    p = index_parts(rows, group, vocab)
+    return p["entity"], p["event"]

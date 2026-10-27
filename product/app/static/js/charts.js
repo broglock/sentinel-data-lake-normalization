@@ -67,7 +67,7 @@ export function timelineChart(rows, width = 900) {
     const y = top + lanes.indexOf(r.SourceGroup) * laneH + laneH / 2;
     const x = X(Date.parse(r.EventStartTime));
     // Log values are untrusted: escape each inside the tooltip HTML (rendered with innerHTML), then the whole for the attribute.
-    const tip = esc(`<b>${esc(r.SourceGroup)}</b><br>${when(r.EventStartTime)}<br>${esc(r.EventType || "event")} · ${esc(r.EventResult || "no result")}<br>matched as ${esc(r.MatchedAs)}<br>${(r.Entities || []).slice(0, 6).map(esc).join("<br>")}`);
+    const tip = esc(`<b>${esc(r.SourceGroup)}</b><br>${when(r.EventStartTime)}<br>${esc(r.EventType || "event")} · ${esc(r.EventResult || "no result")}${r.Count > 1 ? ` · ${r.Count} events` : ""}<br>matched as ${esc(r.MatchedAs)}<br>${(r.Entities || []).slice(0, 6).map(esc).join("<br>")}`);
     let mark;
     if (r.EventResult === "Failure") mark = `<path d="M${x - 5} ${y - 5}L${x + 5} ${y + 5}M${x + 5} ${y - 5}L${x - 5} ${y + 5}" stroke="var(--crit)" stroke-width="2.5" stroke-linecap="round"/>`;
     else if (r.EventResult === "Success") mark = `<circle cx="${x}" cy="${y}" r="5.5" fill="var(--good)" stroke="var(--surface)" stroke-width="2"/>`;

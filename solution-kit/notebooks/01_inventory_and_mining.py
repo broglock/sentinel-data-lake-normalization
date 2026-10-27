@@ -1,12 +1,21 @@
 # %% [markdown]
-# # 01 Inventory and template mining
-# Daily notebook job. For every lake table it samples recent rows and records, per field
-# (typed column, key inside a JSON column, key in a key=value string): type, fill rate,
-# value class shares, and a proposed ASIM name and role. For raw text columns it mines
-# message templates by token masking (lake notebooks cannot install Drain3).
-# Outputs: FieldInventory_SPRK, TemplateCandidates_SPRK. Proposals feed the registry review.
+# # 01 Inventory and template mining (change-driven)
+# Daily notebook job. It reads only what changed:
+#   - new tables, and tables whose column list changed since the last run (TableSchemas_SPRK)
+#   - approved groups whose rows stopped matching: the share of rows with no entity, from the
+#     "_stats" rows the index jobs write, is above UNMATCHED_SHARE. For those it mines only the
+#     lines no approved template matches.
+# Every other table is skipped, including tables whose proposals are already waiting for review:
+# reading the column list is metadata only, so a skipped table costs nothing.
+# For each table it does read, it samples recent rows and records, per field (typed column, key
+# inside a JSON column, key in a key=value string): type, fill rate, value class shares, and a
+# proposed ASIM name and role. For raw text columns it mines message templates by token masking
+# (lake notebooks cannot install Drain3).
+# Outputs (appended, one batch per run): FieldInventory_SPRK, TemplateCandidates_SPRK,
+# TableSchemas_SPRK. Proposals feed the registry review.
 
 # %%
+import hashlib
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -18,8 +27,11 @@ SAMPLE_ROWS = 20000          # rows sampled per table
 JSON_SAMPLE = 500            # rows parsed in Python for JSON and key=value keys
 LOOKBACK = timedelta(days=1)
 TEXT_COLUMNS = ["SyslogMessage", "RawData", "Message", "Msg", "EventMessage"]
-SKIP_PREFIXES = ("HuntEntity", "HuntEvent", "HuntCoverage", "FieldInventory", "TemplateCandidates")
-VOCAB_JSON = "{}"            # paste the vocab section of notebook_config.json here
+SKIP_PREFIXES = ("HuntEntity", "HuntEvent", "HuntCoverage", "FieldInventory", "TemplateCandidates", "TableSchemas")
+UNMATCHED_SHARE = 0.05       # approved group: re-mine when more rows than this produce no entity
+CONFIG_JSON = "{}"           # paste notebook_config.json here (groups, engines and vocab)
+SCHEMA_TABLE = "TableSchemas_SPRK"
+ENTITY_TABLES = ["HuntEntity_SPRK", "HuntEntity_KQL"]
 
 VALUE_CLASSES = {
     "ip": r"^\[?(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]*:[0-9a-fA-F:]+)\]?(:\d+)?$",
@@ -140,13 +152,20 @@ def key_rows(table, col, kind, keyvals, n, vocab):
     return out
 
 
-def mine_templates(provider, name: str, since: datetime, top_n: int = 50):
+def mine_templates(provider, name: str, since: datetime, top_n: int = 50, skip_regex: list | None = None,
+                   spark_filter: str | None = None):
+    """Template candidates for a text table. skip_regex: approved templates, whose lines are
+    left out so only unmatched lines are mined."""
     df = provider.read_table(name)
     text = next((c for c in TEXT_COLUMNS if c in df.columns), None)
     if not text:
         return None
     if "TimeGenerated" in df.columns:
         df = df.where(F.col("TimeGenerated") >= F.lit(since))
+    if spark_filter:
+        df = df.where(F.expr(spark_filter))
+    for r in skip_regex or []:
+        df = df.where(~F.col(text).rlike(r))
     key = F.col("ProcessName") if "ProcessName" in df.columns else F.split(F.trim(F.col(text)), r"\s+").getItem(0)
     masked = F.col(text)
     for pattern, token in MASKS:
@@ -160,29 +179,99 @@ def mine_templates(provider, name: str, since: datetime, top_n: int = 50):
     return t.withColumn("Rank", F.row_number().over(w)).where(F.col("Rank") <= top_n)
 
 
-def run(spark, provider, vocab: dict, now: datetime | None = None):
-    spark.conf.set("spark.sql.session.timeZone", "UTC")
-    since = (now or datetime.now(timezone.utc)) - LOOKBACK
-    inv, mined = [], None
+def fingerprint(df) -> str:
+    """Column names and types: read from the table metadata, no rows scanned."""
+    cols = sorted(f"{f.name}:{f.dataType.simpleString()}" for f in df.schema.fields)
+    return hashlib.sha256("|".join(cols).encode()).hexdigest()
+
+
+def last_fingerprints(provider) -> dict:
+    try:
+        rows = provider.read_table(SCHEMA_TABLE).groupBy("TableName").agg(
+            F.max_by("Fingerprint", "TimeGenerated").alias("Fingerprint")).collect()
+    except Exception:  # first run
+        return {}
+    return {r["TableName"]: r["Fingerprint"] for r in rows}
+
+
+def unmatched_shares(provider, since: datetime) -> dict:
+    """Per group: share of rows read in the last day that no approved rule matched (from _stats rows)."""
+    out = {}
+    for t in ENTITY_TABLES:
+        try:
+            df = provider.read_table(t)
+        except Exception:
+            continue
+        rows = (df.where((F.col("EntityType") == "_stats") & (F.col("Hour") >= F.lit(since)))
+                  .groupBy("SourceGroup", "Role").agg(F.sum("Count").alias("n")).collect())
+        for r in rows:
+            out.setdefault(r["SourceGroup"], {})[r["Role"]] = int(r["n"] or 0)
+    # text groups with templates: lines no template matched; structured groups: rows with no entity
+    return {g: 1 - v.get("RowsTemplateMatched", v.get("RowsWithEntity", 0)) / v["RowsRead"]
+            for g, v in out.items() if v.get("RowsRead")}
+
+
+def plan(provider, cfg: dict, since: datetime) -> list[dict]:
+    """Which tables to read today, and why. Everything else is skipped."""
+    prev = last_fingerprints(provider)
+    unmatched = unmatched_shares(provider, since)
+    by_table: dict[str, list] = {}
+    for g in cfg.get("groups", []):
+        by_table.setdefault(g["table"], []).append(g)
+    work = []
     for name in provider.list_tables():
         if name.startswith(SKIP_PREFIXES):
             continue
-        inv += inventory_table(provider, name, vocab, since)
-        m = mine_templates(provider, name, since)
-        if m is not None:
-            mined = m if mined is None else mined.unionByName(m)
-    inv_df = spark.createDataFrame(inv).withColumn("TimeGenerated", F.current_timestamp())
-    provider.save_as_table(inv_df, "FieldInventory_SPRK", write_options={"mode": "overwrite"})
+        fp = fingerprint(provider.read_table(name))
+        groups = by_table.get(name, [])
+        drifting = [g for g in groups if g.get("engine") == "kql_job" and unmatched.get(g["id"], 0) > UNMATCHED_SHARE]
+        reason = ("new table" if name not in prev else "schema changed" if prev[name] != fp
+                  else "unmatched lines" if drifting else None)
+        if reason:
+            work.append({"table": name, "fingerprint": fp, "reason": reason, "drifting": drifting})
+    return work
+
+
+def run(spark, provider, cfg: dict, now: datetime | None = None):
+    spark.conf.set("spark.sql.session.timeZone", "UTC")
+    now = now or datetime.now(timezone.utc)
+    since = now - LOOKBACK
+    vocab = cfg.get("vocab", cfg)
+    inv, mined, done = [], None, []
+    for w in plan(provider, cfg, since):
+        name = w["table"]
+        if w["reason"] == "unmatched lines":
+            # approved groups whose lines stopped matching: mine only the lines no template matches
+            for g in w["drifting"]:
+                m = mine_templates(provider, name, since, skip_regex=[t["regex_plain"] for t in g.get("templates", [])],
+                                   spark_filter=g.get("spark_filter"))
+                if m is not None:
+                    m = m.withColumn("SourceGroup", F.lit(g["id"]))
+                    mined = m if mined is None else mined.unionByName(m, allowMissingColumns=True)
+        else:
+            inv += inventory_table(provider, name, vocab, since)
+            m = mine_templates(provider, name, since)
+            if m is not None:
+                mined = m if mined is None else mined.unionByName(m, allowMissingColumns=True)
+        done.append({"TableName": name, "Fingerprint": w["fingerprint"], "Reason": w["reason"]})
+    stamp = F.current_timestamp()
+    inv_df = spark.createDataFrame(inv).withColumn("TimeGenerated", stamp) if inv else None
+    if inv_df is not None:
+        provider.save_as_table(inv_df, "FieldInventory_SPRK", write_options={"mode": "append"})
     if mined is not None:
-        provider.save_as_table(mined.withColumn("TimeGenerated", F.current_timestamp()),
-                               "TemplateCandidates_SPRK", write_options={"mode": "overwrite"})
-    return inv_df, mined
+        provider.save_as_table(mined.withColumn("TimeGenerated", stamp), "TemplateCandidates_SPRK",
+                               write_options={"mode": "append"})
+    if done:
+        provider.save_as_table(spark.createDataFrame(done).withColumn("TimeGenerated", stamp), SCHEMA_TABLE,
+                               write_options={"mode": "append"})
+    return inv_df, mined, done
 
 
 # %%
-if __name__ == "__main__" and VOCAB_JSON != "{}":
+if __name__ == "__main__" and CONFIG_JSON != "{}":
     from sentinel_lake.providers import MicrosoftSentinelProvider
     provider = MicrosoftSentinelProvider(spark)  # noqa: F821
-    inv_df, mined = run(spark, provider, json.loads(VOCAB_JSON))  # noqa: F821
-    # Proposals for review: high-fill fields whose values look like entities
-    inv_df.where((F.col("FillRate") > 0.5) & (F.col("ProposedEntity") != "")).show(200, truncate=False)
+    inv_df, mined, done = run(spark, provider, json.loads(CONFIG_JSON))  # noqa: F821
+    print("read:", [(d["TableName"], d["Reason"]) for d in done])
+    if inv_df is not None:  # proposals for review: high-fill fields whose values look like entities
+        inv_df.where((F.col("FillRate") > 0.5) & (F.col("ProposedEntity") != "")).show(200, truncate=False)

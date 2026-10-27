@@ -1,6 +1,8 @@
 # Demo registry: nine reviewed grammar groups. BadgeReader_CL is left out on purpose so the
 # onboarding screens have a new, unreviewed source to work through.
 # filter = KQL (KQL jobs), spark_filter = Spark SQL (notebook), py_filter = the in-app engine.
+# status: approved groups run in the shared KQL job for their table. status: proposed groups are
+# searchable but still read by the hourly notebook until an operator signs the mapping off.
 version: 1
 defaults:
   delay: 15m
@@ -15,7 +17,7 @@ groups:
     vendor: Microsoft
     product: Security Events
     schema: Authentication
-    engine: kql_job
+    status: approved
     asim_reference: _Im_Authentication_MicrosoftWindowsEvent
     layer: asim
     record_key_fields: [Computer, EventID, TargetUserName, IpAddress]
@@ -36,7 +38,7 @@ groups:
     vendor: Microsoft
     product: Entra ID
     schema: Authentication
-    engine: kql_job
+    status: approved
     asim_reference: _Im_Authentication_AADSigninLogs
     layer: asim
     record_key_fields: [Id]
@@ -56,7 +58,7 @@ groups:
     vendor: Fortinet
     product: FortiGate
     schema: NetworkSession
-    engine: kql_job
+    status: approved
     asim_reference: _Im_NetworkSession_FortinetFortiGate
     layer: asim
     record_key_fields: [DeviceName, SourceIP, DestinationIP, SourcePort]
@@ -81,7 +83,7 @@ groups:
     vendor: Palo Alto Networks
     product: PAN-OS
     schema: NetworkSession
-    engine: kql_job
+    status: approved
     asim_reference: _Im_NetworkSession_PaloAltoCEF
     layer: asim
     record_key_fields: [DeviceName, SourceIP, DestinationIP, SourcePort]
@@ -104,7 +106,7 @@ groups:
     vendor: OpenBSD
     product: OpenSSH
     schema: Authentication
-    engine: kql_job
+    status: approved
     asim_reference: _Im_Authentication_Sshd
     layer: template
     record_key_fields: [Computer, SyslogMessage]
@@ -158,7 +160,7 @@ groups:
     vendor: AWS
     product: CloudTrail
     schema: Authentication
-    engine: kql_job
+    status: approved
     asim_reference: _Im_Authentication_AWSCloudTrail
     layer: asim
     record_key_fields: [AwsEventId]
@@ -177,7 +179,7 @@ groups:
     vendor: AWS
     product: CloudTrail
     schema: AuditEvent
-    engine: kql_job
+    status: approved
     layer: registry
     record_key_fields: [AwsEventId]
     event_type: {column: EventName}
@@ -194,7 +196,7 @@ groups:
     vendor: Okta
     product: Okta
     schema: Authentication
-    engine: notebook
+    status: proposed
     asim_reference: _Im_Authentication_OktaSSO
     layer: asim
     record_key_fields: [EventOriginalUid]
@@ -213,7 +215,7 @@ groups:
     vendor: Contoso
     product: Expenses
     schema: Authentication
-    engine: notebook
+    status: proposed
     layer: registry
     record_key_path: Properties.eventId
     event_type: {path: Properties.operation, map: {Login: Logon, Logout: Logoff}, default: Other}
@@ -231,7 +233,7 @@ groups:
     vendor: Unknown
     product: VPN appliance
     schema: Authentication
-    engine: notebook
+    status: proposed
     layer: template
     record_key_fields: [RawData]
     text_column: RawData

@@ -1,11 +1,16 @@
 """Generate lake-safe KQL from the grammar-group registry.
 
 Outputs (under --out, default ./out):
-  kql_jobs/<group>.entity.kql   KQL job query that appends to the HuntEntity table
-  kql_jobs/<group>.event.kql    KQL job query that appends to the HuntEvent table (Tier 1 groups only)
-  notebook/notebook_config.json Config for the notebooks: every group (02 indexes engine: notebook
-                                groups; 03 measures coverage for all of them)
-  mcp_tools/*.kql               Queries for the MCP tools (see ../mcp/tools.yaml)
+  kql_jobs/<job>.entity.kql     KQL job query that appends to the HuntEntity table: an hourly
+                                rollup (one row per hour, source group, entity, role and result)
+                                plus job-count rows (EntityType "_stats") for the coverage report
+  kql_jobs/<job>.event.kql      KQL job query that appends to the HuntEvent table (Tier 1 only)
+  notebook/notebook_config.json Config for the notebooks: every group, with its resolved engine
+                                (02 indexes engine: notebook groups; 01 and 03 read the rest)
+
+Engine: a group with status: approved runs in a KQL job; any other group (proposed, not yet
+reviewed) runs in notebook 02. Groups are batched into shared jobs by `job` (default: the
+source table), so the tenant limit on KQL jobs is counted in tables, not groups.
 
 Every query is plain KQL: no stored functions, no ASIM parser calls, so it runs in
 lake KQL and KQL jobs. Usage:
@@ -24,13 +29,34 @@ import yaml
 # ---------------------------------------------------------------- output schemas
 # Both tables are appended to by many jobs, so every query projects every column
 # in this order (KQL jobs fail when an append does not match the table schema).
-ENTITY_COLUMNS = [
+OCC_COLUMNS = [
     ("EventStartTime", "datetime"), ("SourceTable", "string"), ("SourceGroup", "string"),
     ("SourceRecordKey", "string"), ("EventVendor", "string"), ("EventProduct", "string"),
     ("EventSchema", "string"), ("EventType", "string"), ("EventResult", "string"),
     ("EntityType", "string"), ("Role", "string"), ("Value", "string"), ("ValueNorm", "string"),
     ("ValueType", "string"), ("MappingLayer", "string"), ("MappingTier", "int"),
 ]
+"""One row per entity occurrence: the intermediate shape inside every job, before the rollup."""
+
+ROLLUP_KEYS = ["SourceTable", "SourceGroup", "EventVendor", "EventProduct", "EventSchema", "EventType",
+               "EventResult", "EntityType", "Role", "ValueNorm", "ValueType", "MappingLayer", "MappingTier"]
+SAMPLE_KEYS = 3
+ENTITY_COLUMNS = [
+    ("Hour", "datetime"), ("FirstSeen", "datetime"), ("LastSeen", "datetime"),
+    ("SourceTable", "string"), ("SourceGroup", "string"), ("EventVendor", "string"), ("EventProduct", "string"),
+    ("EventSchema", "string"), ("EventType", "string"), ("EventResult", "string"),
+    ("EntityType", "string"), ("Role", "string"), ("Value", "string"), ("ValueNorm", "string"),
+    ("ValueType", "string"), ("MappingLayer", "string"), ("MappingTier", "int"),
+    ("Count", "long"), ("SampleKeys", "dynamic"),
+]
+"""HuntEntity: one row per hour, source group, entity value, role and result, with a count,
+first and last seen times and up to SAMPLE_KEYS record keys for the pivot to raw rows."""
+
+STATS_ROLES = ("RowsRead", "RowsWithEntity", "RowsTemplateMatched")
+"""Job-count rows written into HuntEntity with EntityType "_stats" (a KQL job writes one table).
+Count = raw rows read, raw rows with at least one entity, raw rows matched by a template.
+Notebook 03 builds the coverage report from these rows without reading source tables."""
+
 EVENT_COLUMNS = [
     ("EventStartTime", "datetime"), ("SourceTable", "string"), ("SourceGroup", "string"),
     ("SourceRecordKey", "string"), ("EventVendor", "string"), ("EventProduct", "string"),
@@ -47,8 +73,28 @@ EVENT_COLUMNS = [
     ("ActingProcessName", "string"), ("TargetProcessName", "string"), ("TargetProcessCommandLine", "string"),
     ("DstZone", "string"), ("MappingTier", "int"),
 ]
-NULL_OF = {"string": '""', "int": "int(null)", "datetime": "datetime(null)"}
-CAST_OF = {"string": "tostring", "int": "toint", "datetime": "todatetime"}
+NULL_OF = {"string": '""', "int": "int(null)", "long": "long(null)", "datetime": "datetime(null)",
+           "dynamic": "dynamic([])"}
+CAST_OF = {"string": "tostring", "int": "toint", "long": "tolong", "datetime": "todatetime",
+           "dynamic": "todynamic"}
+
+ASIM_OUTPUT_FIELDS = [
+    {"column": "SrcIpAddr", "asim": "SrcIpAddr", "entity": "ip", "role": "Src"},
+    {"column": "DstIpAddr", "asim": "DstIpAddr", "entity": "ip", "role": "Dst"},
+    {"column": "DvcIpAddr", "asim": "DvcIpAddr", "entity": "ip", "role": "Dvc"},
+    {"column": "SrcHostname", "asim": "SrcHostname", "entity": "host", "role": "Src"},
+    {"column": "DstHostname", "asim": "DstHostname", "entity": "host", "role": "Dst"},
+    {"column": "DvcHostname", "asim": "DvcHostname", "entity": "host", "role": "Dvc"},
+    {"column": "ActorUsername", "asim": "ActorUsername", "entity": "user", "role": "Actor"},
+    {"column": "TargetUsername", "asim": "TargetUsername", "entity": "user", "role": "Target"},
+    {"column": "SrcUsername", "asim": "SrcUsername", "entity": "user", "role": "Src"},
+    {"column": "DstUsername", "asim": "DstUsername", "entity": "user", "role": "Dst"},
+    {"column": "Url", "asim": "Url", "entity": "url", "role": "Unknown"},
+    {"column": "FileSHA256", "asim": "FileSHA256", "entity": "hash", "role": "Unknown"},
+]
+"""Entity rules for a group whose source_query is an expanded ASIM parser: the parser already
+produced ASIM columns, so the mapping is fixed. Columns the parser does not output must be
+removed from the group before generating (the KQL checker reports them)."""
 
 ENTITY_TYPES = {"ip", "host", "user", "hash", "url", "domain", "email", "process", "file"}
 ROLES = {"Src", "Dst", "Actor", "Target", "Dvc", "Unknown"}
@@ -85,7 +131,9 @@ def value_expr(rule: dict) -> str:
         return expr
     if "path" in rule:
         head, *rest = rule["path"].split(".")
-        dyn = f"parse_json(tostring({head}))" if rule.get("json_string") else head
+        # parse_json(tostring(x)) works whether the column is dynamic or a JSON string; set
+        # json_string: false on a rule to read a dynamic column directly.
+        dyn = head if rule.get("json_string") is False else f"parse_json(tostring({head}))"
         return f"tostring({dyn}{''.join('.' + p for p in rest)})"
     raise ValueError(f"field rule needs column or path: {rule}")
 
@@ -151,15 +199,72 @@ CLASSIFIER = [
 ]
 
 
-def header(group: dict, defaults: dict) -> str:
-    d = group.get("delay", defaults.get("delay", "15m"))
-    w = group.get("window", defaults.get("window", "1h"))
+def complete_group(group: dict) -> dict:
+    """Fill record_key / spark_record_key from record_key_fields or record_key_path, so KQL,
+    Spark and Python compute the same SourceRecordKey from one definition."""
+    g = dict(group)
+    tc = g.get("time_column", "TimeGenerated")
+    if g.get("record_key_path") and not g.get("record_key"):
+        head, *rest = g["record_key_path"].split(".")
+        g["record_key"] = f"tostring({head}{''.join('.' + p for p in rest)})"
+        g["spark_record_key"] = f"get_json_object({head}, '$.{'.'.join(rest)}')"
+    elif g.get("record_key_fields") and not g.get("record_key"):
+        cols = g["record_key_fields"]
+        g["record_key"] = ('hash_sha256(strcat(format_datetime(' + tc + ', "yyyy-MM-dd HH:mm:ss.fff")'
+                           + "".join(f', "|", tostring({c})' for c in cols) + "))")
+        g["spark_record_key"] = ("sha2(concat_ws('|', date_format(" + tc + ", 'yyyy-MM-dd HH:mm:ss.SSS')"
+                                 + "".join(f", coalesce(cast({c} as string), '')" for c in cols) + "), 256)")
+    if not g.get("record_key"):
+        raise ValueError(f"group {g.get('id')} needs record_key, record_key_fields or record_key_path")
+    # exclude_text: lines an operator marked as noise (heartbeats, keepalives) on the text column
+    ex = [x for x in g.get("exclude_text") or [] if x]
+    if ex and g.get("text_column") and not g.get("_excluded"):
+        col = g["text_column"]
+        g["filter"] = f"({g.get('filter', 'true')})" + "".join(f" and not({col} contains {q(x)})" for x in ex)
+        g["spark_filter"] = f"({g.get('spark_filter', 'true')})" + "".join(
+            f" AND NOT ({col} LIKE '%" + x.replace("'", "''").replace("%", "\\%").replace("_", "\\_") + "%')" for x in ex)
+        g["_excluded"] = True
+    return g
+
+
+ENTITY_ROLE_ASIM = {(f["entity"], f["role"]): f["asim"] for f in ASIM_OUTPUT_FIELDS if f["role"] != "Unknown"}
+ENTITY_ROLE_ASIM.update({("url", "Unknown"): "Url", ("url", "Dst"): "Url", ("domain", "Dst"): "DstDomain",
+                         ("domain", "Unknown"): "DstDomain"})
+"""HuntEvent column for a template slot, by (entity, role), when the slot names no `asim`."""
+
+
+def engine_of(group: dict) -> str:
+    """approved -> KQL job; anything else (proposed, unreviewed) -> notebook 02. A registry without
+    status keys keeps its explicit engine."""
+    if "status" in group:
+        return "kql_job" if group["status"] == "approved" else "notebook"
+    return group.get("engine", "notebook")
+
+
+def job_of(group: dict) -> str:
+    """Jobs are shared per source table unless the group names its own job."""
+    return slug(group.get("job") or group["table"])
+
+
+def fn_name(group: dict) -> str:
+    return "G_" + slug(group["id"])
+
+
+def job_header(groups: list[dict], defaults: dict) -> str:
+    g0 = groups[0]
+    d = g0.get("delay", defaults.get("delay", "15m"))
+    w = g0.get("window", defaults.get("window", "1h"))
+    names = ", ".join(g["id"] for g in groups)
+    return (f"// Generated by generate.py for registry groups: {names}. Do not edit by hand.\n"
+            f"let endTime = bin(now() - {d}, {w});\n"
+            f"let startTime = endTime - {w};\n")
+
+
+def base_block(group: dict) -> str:
     tc = group.get("time_column", "TimeGenerated")
     return (
-        f"// Generated by generate.py from registry group {group['id']}. Do not edit by hand.\n"
-        f"let endTime = bin(now() - {d}, {w});\n"
-        f"let startTime = endTime - {w};\n"
-        f"let base = {group['table']}\n"
+        (f"let _source = () {{\n{group['source_query'].strip().rstrip(';')}\n}};\nlet base = _source()\n"
+         if group.get("source_query") else f"let base = {group['table']}\n") +
         f"| where {tc} >= startTime and {tc} < endTime\n"
         f"| where {group.get('filter', 'true')}\n"
         f"| extend SourceRecordKey = tostring({group['record_key']}), EventStartTime = todatetime({tc});\n"
@@ -186,10 +291,41 @@ def entity_projection(group: dict, event_type: str, event_result: str) -> str:
     )
 
 
-def finish_entity(nulls: list[str]) -> str:
-    cols = ", ".join(c for c, _ in ENTITY_COLUMNS)
+def finish_occurrences(nulls: list[str]) -> str:
+    cols = ", ".join(c for c, _ in OCC_COLUMNS)
     tail = NORMALIZE_TAIL.replace("NULLS", ", ".join(q(n) for n in nulls))
     return f"{tail}\n| project {cols}"
+
+
+def stats_branch(group: dict, source: str, role: str) -> str:
+    """One _stats row per hour: rows read, rows with an entity, rows matched by a template."""
+    agg = "Count = dcount(SourceRecordKey)" if role != "RowsRead" else "Count = count()"
+    return (f"{source}\n"
+            f"| summarize {agg}, FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime)"
+            f" by Hour = bin(EventStartTime, 1h)\n"
+            f"| extend SourceTable = {q(group['table'])}, SourceGroup = {q(group['id'])}, EntityType = \"_stats\", "
+            f"Role = {q(role)}")
+
+
+ROLLUP = ("occ\n"
+          "| summarize Count = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),\n"
+          f"            SampleKeys = make_set(SourceRecordKey, {SAMPLE_KEYS}), Value = take_any(Value)\n"
+          "    by Hour = bin(EventStartTime, 1h), " + ", ".join(ROLLUP_KEYS))
+
+
+def finish_entity() -> str:
+    """Fill the columns stats rows do not carry, then project HuntEntity in table order."""
+    cols = []
+    for name, typ in ENTITY_COLUMNS:
+        if typ == "string":
+            cols.append(f"{name} = tostring({name})")
+        elif typ == "dynamic":
+            cols.append(f"{name} = iff(isnull({name}), dynamic([]), {name})")
+        elif name == "MappingTier":
+            cols.append(f"{name} = toint({name})")
+        else:
+            cols.append(name)
+    return "| project " + ", ".join(cols)
 
 
 def result_block(group: dict, vocab: dict) -> tuple[str, str]:
@@ -212,8 +348,8 @@ def result_block(group: dict, vocab: dict) -> tuple[str, str]:
     return extend, f'case({", ".join(parts)}, "NA")'
 
 
-def build_entity_query(group: dict, defaults: dict, vocab: dict) -> str:
-    nulls = vocab.get("null_values", [])
+def occurrence_blocks(group: dict, vocab: dict) -> list[str]:
+    """The union branches that produce one row per entity occurrence (before normalization)."""
     tier = int(group.get("tier", 2))
     blocks = []
     const = [entity_bag(c["entity"], c["role"], value_expr(c), "registry", tier)
@@ -279,38 +415,45 @@ def build_entity_query(group: dict, defaults: dict, vocab: dict) -> str:
 
     if not blocks:
         raise ValueError(f"group {group['id']} has nothing to map")
+    return blocks
+
+
+def entity_function(group: dict, vocab: dict) -> str:
+    """let G_<group> = () { ... }: HuntEntity rollup rows plus _stats rows for one group."""
+    nulls = vocab.get("null_values", [])
+    blocks = occurrence_blocks(group, vocab)
     union = "union\n" + ",\n".join("(" + b.rstrip() + "\n)" for b in blocks)
-    return header(group, defaults) + union + "\n" + finish_entity(nulls) + "\n"
+    branches = [ROLLUP, stats_branch(group, "base", "RowsRead"), stats_branch(group, "occ", "RowsWithEntity")]
+    if group.get("text_column") and group.get("templates"):
+        branches.append(stats_branch(group, "occ\n| where MappingLayer == \"template\"", "RowsTemplateMatched"))
+    return (f"let {fn_name(group)} = () {{\n" + base_block(group) +
+            "let occ = " + union + "\n" + finish_occurrences(nulls) + ";\n"
+            "union\n" + ",\n".join("(" + b + "\n)" for b in branches) + "\n};\n")
 
 
-def build_event_query(group: dict, defaults: dict, vocab: dict) -> str | None:
-    """HuntEvent rows for Tier 1 groups with structured field rules."""
-    if int(group.get("tier", 2)) != 1 or not group.get("fields"):
-        return None
-    nulls = ", ".join(q(n) for n in vocab.get("null_values", []))
+def build_entity_job(groups: list[dict], defaults: dict, vocab: dict) -> str:
+    groups = [complete_group(g) for g in groups]
+    return (job_header(groups, defaults) + "".join(entity_function(g, vocab) for g in groups) +
+            "union " + ", ".join(f"{fn_name(g)}()" for g in groups) + "\n" + finish_entity() + "\n")
 
-    def clean(name: str, expr: str) -> str:
-        """Null markers become empty; IP columns lose ports and brackets (same rules as HuntEntity)."""
-        e = f'iff(tolower(trim(@"\\s", {expr})) in ({nulls}), "", trim(@"\\s", {expr}))'
-        if name.endswith("IpAddr"):
-            e = (f'iff(countof({e}, ":") >= 2, tolower(trim(@"[\\[\\]]", tostring(split({e}, "%")[0]))), '
-                 f'extract(@"(\\d{{1,3}}(?:\\.\\d{{1,3}}){{3}})", 1, {e}))')
-        return e
 
-    mapped = {}
-    for f in group["fields"]:
-        if f.get("asim"):
-            mapped[f["asim"]] = clean(f["asim"], value_expr(f))
-    for c in group.get("constant_entities", []):
-        if c.get("asim"):
-            mapped[c["asim"]] = clean(c["asim"], value_expr(c))
-    r_ext, r_case = result_block(group, vocab)
-    mapped.update({
-        "SourceTable": q(group["table"]), "SourceGroup": q(group["id"]),
-        "EventVendor": q(group.get("vendor", "")), "EventProduct": q(group.get("product", "")),
-        "EventSchema": q(group.get("schema", "")), "EventType": event_type_expr(group),
-        "EventResult": r_case, "MappingTier": "1",
-    })
+def build_entity_query(group: dict, defaults: dict, vocab: dict) -> str:
+    """The HuntEntity job query for a single group (preview, validation, single-group jobs)."""
+    return build_entity_job([group], defaults, vocab)
+
+
+
+
+def _clean_event(name: str, expr: str, nulls: str) -> str:
+    """Null markers become empty; IP columns lose ports and brackets (same rules as HuntEntity)."""
+    e = f'iff(tolower(trim(@"\\s", {expr})) in ({nulls}), "", trim(@"\\s", {expr}))'
+    if name.endswith("IpAddr"):
+        e = (f'iff(countof({e}, ":") >= 2, tolower(trim(@"[\\[\\]]", tostring(split({e}, "%")[0]))), '
+             f'extract(@"(\\d{{1,3}}(?:\\.\\d{{1,3}}){{3}})", 1, {e}))')
+    return e
+
+
+def _event_projection(mapped: dict) -> str:
     cols = []
     for name, typ in EVENT_COLUMNS:
         if name in ("EventStartTime", "SourceRecordKey"):
@@ -319,23 +462,122 @@ def build_event_query(group: dict, defaults: dict, vocab: dict) -> str | None:
             cols.append(f"{name} = {CAST_OF[typ]}({mapped[name]})")
         else:
             cols.append(f"{name} = {NULL_OF[typ]}")
-    return header(group, defaults) + "base\n" + r_ext + "| project " + ",\n    ".join(cols) + "\n"
+    return "| project " + ",\n    ".join(cols)
+
+
+def slot_asim(slot: dict) -> str | None:
+    return slot.get("asim") or ENTITY_ROLE_ASIM.get((slot.get("entity"), slot.get("role", "Unknown")))
+
+
+def event_templates(group: dict) -> list[dict]:
+    """Tier 1 templates produce HuntEvent rows too, so text sources answer event questions."""
+    if not group.get("text_column"):
+        return []
+    tier = int(group.get("tier", 2))
+    return [t for t in group.get("templates", []) or [] if int(t.get("tier", tier)) == 1]
+
+
+def has_events(group: dict) -> bool:
+    return bool((int(group.get("tier", 2)) == 1 and group.get("fields")) or event_templates(group))
+
+
+def event_blocks(group: dict, vocab: dict) -> list[str]:
+    nulls = ", ".join(q(n) for n in vocab.get("null_values", []))
+    common = {"SourceTable": q(group["table"]), "SourceGroup": q(group["id"]),
+              "EventVendor": q(group.get("vendor", "")), "EventProduct": q(group.get("product", "")),
+              "EventSchema": q(group.get("schema", "")), "MappingTier": "1"}
+    consts = {c["asim"]: _clean_event(c["asim"], value_expr(c), nulls)
+              for c in group.get("constant_entities", []) if c.get("asim")}
+    blocks = []
+    if int(group.get("tier", 2)) == 1 and group.get("fields"):
+        mapped = {f["asim"]: _clean_event(f["asim"], value_expr(f), nulls) for f in group["fields"] if f.get("asim")}
+        mapped.update(consts)
+        r_ext, r_case = result_block(group, vocab)
+        mapped.update(common, EventType=event_type_expr(group), EventResult=r_case)
+        blocks.append("base\n" + r_ext + _event_projection(mapped))
+    text = group.get("text_column")
+    for t in event_templates(group):
+        plain, idx = numbered_regex(t["regex"])
+        mapped, ext = dict(consts), []
+        for name, slot in (t.get("slots") or {}).items():
+            col = slot_asim(slot or {})
+            if col and col in dict(EVENT_COLUMNS) and name in idx:
+                ext.append(f"_t_{name} = extract({rx(plain)}, {idx[name]}, {text})")
+                mapped[col] = _clean_event(col, f"_t_{name}", nulls)
+        mapped.update(common, EventType=q(t.get("event_type", "")), EventResult=q(t.get("event_result", "")))
+        blocks.append("base\n"
+                      f"| where {text} contains {q(t['match'])}\n"
+                      f"| where {text} matches regex {rx(plain)}\n" +
+                      (f"| extend {', '.join(ext)}\n" if ext else "") + _event_projection(mapped))
+    return blocks
+
+
+def event_function(group: dict, vocab: dict) -> str | None:
+    blocks = event_blocks(group, vocab)
+    if not blocks:
+        return None
+    body = blocks[0] if len(blocks) == 1 else "union\n" + ",\n".join("(" + b + "\n)" for b in blocks)
+    return f"let {fn_name(group)}_ev = () {{\n" + base_block(group) + body + "\n};\n"
+
+
+def build_event_job(groups: list[dict], defaults: dict, vocab: dict) -> str | None:
+    """HuntEvent rows: Tier 1 groups with field rules, and Tier 1 templates on text sources."""
+    groups = [complete_group(g) for g in groups]
+    fns = [(g, event_function(g, vocab)) for g in groups]
+    fns = [(g, f) for g, f in fns if f]
+    if not fns:
+        return None
+    return (job_header([g for g, _ in fns], defaults) + "".join(f for _, f in fns) +
+            "union " + ", ".join(f"{fn_name(g)}_ev()" for g, _ in fns) + "\n")
+
+
+def build_event_query(group: dict, defaults: dict, vocab: dict) -> str | None:
+    return build_event_job([group], defaults, vocab)
+
+
+def plan_jobs(groups: list[dict]) -> dict[str, list[dict]]:
+    """Approved groups batched into shared KQL jobs (one per source table unless `job` is set)."""
+    jobs: dict[str, list[dict]] = {}
+    for g in groups:
+        if engine_of(g) == "kql_job":
+            jobs.setdefault(job_of(g), []).append(g)
+    return jobs
 
 
 def notebook_config(groups: list[dict], vocab: dict) -> dict:
     out = []
-    for g in groups:
+    for g in (complete_group(x) for x in groups):
         tpl = []
         for t in g.get("templates", []) or []:
             plain, idx = numbered_regex(t["regex"])
             tpl.append({**t, "regex_plain": plain, "group_index": idx})
-        out.append({**g, "templates": tpl})
-    return {"groups": out, "vocab": vocab, "classifier": CLASSIFIER,
-            "entity_columns": ENTITY_COLUMNS, "event_columns": EVENT_COLUMNS}
+        ev = [{"id": t["id"], "columns": {slot_asim(s or {}): name for name, s in (t.get("slots") or {}).items()
+                                           if slot_asim(s or {}) in dict(EVENT_COLUMNS)}}
+              for t in event_templates(g)]
+        out.append({**g, "engine": engine_of(g), "templates": tpl, "event_templates": ev})
+    return {"groups": out, "vocab": vocab, "classifier": CLASSIFIER, "occ_columns": OCC_COLUMNS,
+            "entity_columns": ENTITY_COLUMNS, "event_columns": EVENT_COLUMNS, "rollup_keys": ROLLUP_KEYS,
+            "sample_keys": SAMPLE_KEYS, "stats_roles": list(STATS_ROLES)}
 
 
 def slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_")
+
+
+def write_jobs(groups: list[dict], defaults: dict, vocab: dict, out: str) -> dict[str, list[str]]:
+    """Writes kql_jobs/<job>.entity.kql and .event.kql; returns job file -> group ids."""
+    os.makedirs(os.path.join(out, "kql_jobs"), exist_ok=True)
+    files = {}
+    for job, gs in plan_jobs(groups).items():
+        with open(os.path.join(out, "kql_jobs", f"{job}.entity.kql"), "w", encoding="utf-8") as f:
+            f.write(build_entity_job(gs, defaults, vocab))
+        files[f"{job}.entity.kql"] = [g["id"] for g in gs]
+        ev = build_event_job(gs, defaults, vocab)
+        if ev:
+            with open(os.path.join(out, "kql_jobs", f"{job}.event.kql"), "w", encoding="utf-8") as f:
+                f.write(ev)
+            files[f"{job}.event.kql"] = [g["id"] for g in gs if has_events(complete_group(g))]
+    return files
 
 
 def main() -> None:
@@ -347,26 +589,14 @@ def main() -> None:
     reg = yaml.safe_load(open(a.registry, encoding="utf-8"))
     vocab = yaml.safe_load(open(a.vocab, encoding="utf-8"))
     defaults = reg.get("defaults", {})
-    os.makedirs(os.path.join(a.out, "kql_jobs"), exist_ok=True)
+    files = write_jobs(reg["groups"], defaults, vocab, a.out)
     os.makedirs(os.path.join(a.out, "notebook"), exist_ok=True)
-    jobs = 0
-    for g in reg["groups"]:
-        if g.get("engine", "notebook") != "kql_job":
-            continue
-        name = slug(g["id"])
-        with open(os.path.join(a.out, "kql_jobs", f"{name}.entity.kql"), "w", encoding="utf-8") as f:
-            f.write(build_entity_query(g, defaults, vocab))
-        jobs += 1
-        ev = build_event_query(g, defaults, vocab)
-        if ev:
-            with open(os.path.join(a.out, "kql_jobs", f"{name}.event.kql"), "w", encoding="utf-8") as f:
-                f.write(ev)
-            jobs += 1
     with open(os.path.join(a.out, "notebook", "notebook_config.json"), "w", encoding="utf-8") as f:
         json.dump(notebook_config(reg["groups"], vocab), f, indent=1)
-    print(f"KQL job queries: {jobs} (tenant limit 100 enabled jobs)")
-    if jobs > 40:
-        print("WARNING: more than 40 KQL jobs; move low-volume groups to engine: notebook")
+    nb = [g["id"] for g in reg["groups"] if engine_of(g) == "notebook"]
+    print(f"KQL job queries: {len(files)} (tenant limit 100 enabled jobs); notebook 02 groups: {len(nb)}")
+    if len(files) > 60:
+        print("WARNING: more than 60 KQL jobs; set a shared `job` on related groups")
 
 
 if __name__ == "__main__":

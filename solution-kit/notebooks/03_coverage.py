@@ -4,6 +4,10 @@
 # indexed rows, extraction rate, template match rate, unknown-role share, last index
 # write, and a status that compares today with the group's own trailing 28 days.
 # The MCP `coverage` tool reads this table.
+#
+# It reads no source tables. Every index job (KQL job or notebook 02) writes "_stats" rows
+# into HuntEntity with the rows it read, the rows that produced an entity and the rows a
+# template matched; this notebook sums those and reads the rollup rows for role shares.
 
 # %%
 import json
@@ -13,7 +17,7 @@ from pyspark.sql import functions as F
 
 CONFIG_JSON = "{}"           # paste notebook_config.json here
 LOOKBACK = timedelta(days=1)
-ENTITY_TABLE = "HuntEntity_SPRK"
+ENTITY_TABLES = ["HuntEntity_SPRK", "HuntEntity_KQL"]   # notebook output and KQL job output
 COVERAGE_TABLE = "HuntCoverage_SPRK"
 THRESHOLDS = {"extraction_structured": 0.90, "template_match": 0.70, "unknown_role": 0.30,
               "drop_points": 0.20, "stale_hours": 2}
@@ -25,26 +29,42 @@ def group_tier(g: dict) -> int:
     return min(tiers) if tiers else 3
 
 
-def measure(provider, g: dict, start: datetime, end: datetime, ents) -> dict:
-    tc = g.get("time_column", "TimeGenerated")
-    raw = provider.read_table(g["table"]).where((F.col(tc) >= F.lit(start)) & (F.col(tc) < F.lit(end)))
-    if g.get("spark_filter"):
-        raw = raw.where(F.expr(g["spark_filter"]))
-    raw_rows = raw.count()
-    e = ents.where(F.col("SourceGroup") == g["id"])
-    indexed = e.select("SourceRecordKey").distinct().count()
-    templ = e.where(F.col("MappingLayer") == "template").select("SourceRecordKey").distinct().count()
-    ent_rows = e.count()
-    unknown = e.where(F.col("Role") == "Unknown").count()
-    last = e.agg(F.max("TimeGenerated")).first()[0]
+def read_index(provider, start: datetime, end: datetime):
+    """The last day of HuntEntity rows from every index table that exists."""
+    out = None
+    for t in ENTITY_TABLES:
+        try:
+            df = provider.read_table(t)
+        except Exception:  # table not created yet (no KQL jobs or no notebook groups)
+            continue
+        df = df.where((F.col("Hour") >= F.lit(start)) & (F.col("Hour") < F.lit(end)))
+        out = df if out is None else out.unionByName(df, allowMissingColumns=True)
+    return out
+
+
+def measure(g: dict, idx) -> dict:
+    e = idx.where(F.col("SourceGroup") == g["id"]) if idx is not None else None
+    sums = {}
+    if e is not None:
+        for r in e.where(F.col("EntityType") == "_stats").groupBy("Role").agg(F.sum("Count").alias("n")).collect():
+            sums[r["Role"]] = int(r["n"] or 0)
+        ent = e.where(F.col("EntityType") != "_stats")
+        agg = ent.agg(F.sum("Count").alias("all"),
+                      F.sum(F.when(F.col("Role") == "Unknown", F.col("Count")).otherwise(0)).alias("unknown"),
+                      F.max("LastSeen").alias("last")).first()
+    else:
+        agg = {"all": 0, "unknown": 0, "last": None}
+    raw_rows, indexed = sums.get("RowsRead", 0), sums.get("RowsWithEntity", 0)
+    templ = sums.get("RowsTemplateMatched", 0)
     text = bool(g.get("text_column"))
+    ent_rows = int(agg["all"] or 0)
     return {
         "SourceGroup": g["id"], "SourceTable": g["table"], "Engine": g.get("engine", "notebook"),
         "Tier": group_tier(g), "RawRows": raw_rows, "IndexedRows": indexed,
         "ExtractionRate": round(indexed / raw_rows, 4) if raw_rows else None,
         "TemplateMatchRate": round(templ / raw_rows, 4) if (raw_rows and text and g.get("templates")) else None,
-        "UnknownRoleShare": round(unknown / ent_rows, 4) if ent_rows else None,
-        "LastIndexed": last, "HasText": text,
+        "UnknownRoleShare": round(int(agg["unknown"] or 0) / ent_rows, 4) if ent_rows else None,
+        "LastIndexed": agg["last"], "HasText": text,
     }
 
 
@@ -70,8 +90,9 @@ def run(spark, provider, cfg: dict, now: datetime | None = None):
     now = now or datetime.now(timezone.utc)
     end = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
     start = end - LOOKBACK
-    ents = provider.read_table(ENTITY_TABLE).where(
-        (F.col("EventStartTime") >= F.lit(start)) & (F.col("EventStartTime") < F.lit(end))).cache()
+    idx = read_index(provider, start, end)
+    if idx is not None:
+        idx = idx.cache()
     try:
         hist = provider.read_table(COVERAGE_TABLE).where(F.col("TimeGenerated") >= F.lit(now - timedelta(days=28)))
         history = {r["SourceGroup"]: r["avg"] for r in
@@ -80,12 +101,13 @@ def run(spark, provider, cfg: dict, now: datetime | None = None):
         history = {}
     rows = []
     for g in cfg["groups"]:
-        r = measure(provider, g, start, end, ents)
+        r = measure(g, idx)
         r["Status"] = status(r, history, now)
         rows.append(r)
     df = spark.createDataFrame(rows).withColumn("TimeGenerated", F.current_timestamp())
     provider.save_as_table(df, COVERAGE_TABLE, write_options={"mode": "append"})
-    ents.unpersist()
+    if idx is not None:
+        idx.unpersist()
     return rows
 
 

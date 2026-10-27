@@ -3,8 +3,9 @@
 # Spark SQL (notebooks, coverage). Both forms must select the same rows and build the
 # same key, byte for byte: format times to milliseconds and turn nulls into '' in both.
 # One entry per grammar group (one table + one message format).
-# generate.py turns this file into KQL job queries, the long-tail notebook config
-# and the MCP tool queries. Edit this file through pull requests; never edit the
+# generate.py turns this file into KQL job queries (approved groups, batched per source
+# table), the notebook config (proposed groups run in notebook 02 until approved) and the
+# MCP tool queries. Edit this file through pull requests; never edit the
 # generated queries.
 
 version: 1
@@ -26,7 +27,7 @@ groups:
     vendor: OpenSSH
     product: OpenSSH
     schema: Authentication
-    engine: kql_job                 # kql_job for high-volume groups, notebook for the long tail
+    status: approved                # approved: runs in a KQL job; proposed: notebook 02 until reviewed
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", Computer, "|", SyslogMessage))'
     spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(Computer, ''), coalesce(SyslogMessage, '')), 256)"
@@ -64,7 +65,7 @@ groups:
     vendor: Palo Alto
     product: PanOS
     schema: NetworkSession
-    engine: kql_job
+    status: approved
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", DeviceName, "|", ReceiptTime, "|", SourceIP, "|", DestinationIP, "|", tostring(SourcePort)))'
     spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(DeviceName, ''), coalesce(ReceiptTime, ''), coalesce(SourceIP, ''), coalesce(DestinationIP, ''), coalesce(cast(SourcePort as string), '')), 256)"
@@ -94,7 +95,7 @@ groups:
     vendor: Contoso
     product: InternalApp
     schema: AuditEvent
-    engine: notebook
+    status: proposed
     time_column: TimeGenerated
     record_key: 'tostring(Properties.eventId)'
     spark_record_key: "get_json_object(Properties, '$.eventId')"
@@ -115,7 +116,7 @@ groups:
     vendor: Unknown
     product: Appliance
     schema: ""
-    engine: notebook
+    status: proposed
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", RawData))'
     spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(RawData, '')), 256)"

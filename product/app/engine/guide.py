@@ -244,7 +244,7 @@ def build_group(table: str, decisions: dict, sample_columns: list[str]) -> dict:
     gid = decisions.get("id") or f"{table}:main"
     g: dict[str, Any] = {"id": gid, "table": table, "filter": "true", "spark_filter": "true",
                          "vendor": decisions.get("vendor", ""), "product": decisions.get("product", ""),
-                         "schema": p["schema"], "engine": decisions.get("engine", "notebook"),
+                         "schema": p["schema"], "status": "approved" if decisions.get("engine") == "kql_job" else "proposed",
                          "layer": "registry", "tier": 1}
     text = decisions.get("text_column")
     kv_fields = [f for f in decisions.get("fields", []) if f.get("kind") == "kv" and f.get("entity") or

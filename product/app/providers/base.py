@@ -28,7 +28,8 @@ class Provider(ABC):
     @abstractmethod
     def index_rows_for_group(self, group_id: str, limit: int = 20) -> list[dict]: ...
     @abstractmethod
-    def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None) -> list[dict]: ...
+    def pivot(self, table: str, event_time: str, value: str, record_key: str = "", group: dict | None = None,
+              last_time: str = "") -> list[dict]: ...
 
     # ---- tenant changes (only ever called after an approval)
     @abstractmethod

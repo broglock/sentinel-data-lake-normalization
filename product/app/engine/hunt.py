@@ -32,22 +32,28 @@ def _iso(t: Any) -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if isinstance(t, datetime) else str(t)
 
 
+def _match(e: dict, v: str, short: str) -> bool:
+    return e["ValueNorm"] in (v, short) or (e["Value"] or "").lower() == v
+
+
+def _rows(ents: list[dict], since: datetime) -> list[dict]:
+    """HuntEntity rollup rows in the window (the _stats rows are job counts, not entities)."""
+    return [e for e in ents if e["EntityType"] != "_stats" and e["Hour"] > since]
+
+
 def hunt_value(ents: list[dict], value: str, days: float = 7) -> list[dict]:
     v, short = value_forms(value)
-    since = _since(days)
     agg: dict[tuple, dict] = {}
-    for e in ents:
-        if e["EventStartTime"] < since:
-            continue
-        if e["ValueNorm"] not in (v, short) and (e["Value"] or "").lower() != v:
+    for e in _rows(ents, _since(days)):
+        if not _match(e, v, short):
             continue
         k = (e["SourceTable"], e["SourceGroup"], e["EntityType"])
         a = agg.setdefault(k, {"SourceTable": k[0], "SourceGroup": k[1], "EntityType": k[2], "Events": 0,
-                               "FirstSeen": e["EventStartTime"], "LastSeen": e["EventStartTime"], "Roles": set(),
+                               "FirstSeen": e["FirstSeen"], "LastSeen": e["LastSeen"], "Roles": set(),
                                "ValueForms": set(), "Tiers": set(), "EventTypes": set(), "Results": set()})
-        a["Events"] += 1
-        a["FirstSeen"] = min(a["FirstSeen"], e["EventStartTime"])
-        a["LastSeen"] = max(a["LastSeen"], e["EventStartTime"])
+        a["Events"] += int(e["Count"])
+        a["FirstSeen"] = min(a["FirstSeen"], e["FirstSeen"])
+        a["LastSeen"] = max(a["LastSeen"], e["LastSeen"])
         a["Roles"].add(e["Role"]); a["ValueForms"].add(e["Value"]); a["Tiers"].add(e["MappingTier"])
         if e["EventType"]:
             a["EventTypes"].add(e["EventType"])
@@ -62,19 +68,18 @@ def hunt_value(ents: list[dict], value: str, days: float = 7) -> list[dict]:
 
 def hunt_entity(ents: list[dict], etype: str, value: str, role: str = "*", days: float = 7) -> list[dict]:
     v = value.strip().lower()
-    since = _since(days)
     agg: dict[tuple, dict] = {}
-    for e in ents:
-        if e["EventStartTime"] < since or e["EntityType"] != etype or (role != "*" and e["Role"] != role):
+    for e in _rows(ents, _since(days)):
+        if e["EntityType"] != etype or (role != "*" and e["Role"] != role):
             continue
         if not (e["ValueNorm"] == v or (e["Value"] or "").lower() == v or (etype == "url" and v in e["ValueNorm"])):
             continue
         k = (e["SourceTable"], e["SourceGroup"], e["Role"])
         a = agg.setdefault(k, {"SourceTable": k[0], "SourceGroup": k[1], "Role": k[2], "Events": 0,
-                               "FirstSeen": e["EventStartTime"], "LastSeen": e["EventStartTime"],
+                               "FirstSeen": e["FirstSeen"], "LastSeen": e["LastSeen"],
                                "Results": set(), "Tiers": set()})
-        a["Events"] += 1
-        a["FirstSeen"] = min(a["FirstSeen"], e["EventStartTime"]); a["LastSeen"] = max(a["LastSeen"], e["EventStartTime"])
+        a["Events"] += int(e["Count"])
+        a["FirstSeen"] = min(a["FirstSeen"], e["FirstSeen"]); a["LastSeen"] = max(a["LastSeen"], e["LastSeen"])
         if e["EventResult"]:
             a["Results"].add(e["EventResult"])
         a["Tiers"].add(e["MappingTier"])
@@ -83,26 +88,28 @@ def hunt_entity(ents: list[dict], etype: str, value: str, role: str = "*", days:
             for a in sorted(agg.values(), key=lambda x: -x["Events"])]
 
 
-def auth_events(ents: list[dict], user: str, result: str = "*", days: float = 7) -> list[dict]:
-    v, _ = value_forms(user)
-    short = v.split("\\")[1] if "\\" in v else v.split("@")[0] if "@" in v else v
+def _user_short(u: str) -> str:
+    u = (u or "").lower()
+    return u.split("\\")[1] if "\\" in u else u.split("@")[0] if "@" in u else u
+
+
+def auth_events(evs: list[dict], user: str, result: str = "*", days: float = 7) -> list[dict]:
+    """Sign-ins from HuntEvent (Tier 1 sources), matched on the short form of the user."""
+    short = _user_short(user.strip())
     since = _since(days)
-    src_by_key: dict[str, str] = {}
-    for e in ents:
-        if e["EntityType"] == "ip" and e["Role"] == "Src":
-            src_by_key.setdefault(e["SourceRecordKey"], e["ValueNorm"])
     out = []
-    for e in ents:
-        if e["EventStartTime"] < since or e["EntityType"] != "user" or e["ValueNorm"] != short or e["MappingTier"] != 1:
+    for e in evs:
+        if e["EventStartTime"] <= since:
             continue
         if not (e["EventType"] in ("Logon", "Logoff") or e["EventSchema"] == "Authentication"):
             continue
-        if result != "*" and e["EventResult"] != result:
+        u = e.get("TargetUsername") or e.get("ActorUsername") or ""
+        if _user_short(u) != short or (result != "*" and e["EventResult"] != result):
             continue
         out.append({"EventStartTime": _iso(e["EventStartTime"]), "SourceTable": e["SourceTable"],
                     "SourceGroup": e["SourceGroup"], "EventType": e["EventType"], "EventResult": e["EventResult"],
-                    "User": e["Value"], "SrcIpAddr": src_by_key.get(e["SourceRecordKey"], ""),
-                    "SourceRecordKey": e["SourceRecordKey"], "_t": e["EventStartTime"]})
+                    "User": u, "SrcIpAddr": e.get("SrcIpAddr") or "", "SourceRecordKey": e["SourceRecordKey"],
+                    "_t": e["EventStartTime"]})
     out.sort(key=lambda r: r["_t"], reverse=True)
     for r in out:
         r.pop("_t")
@@ -133,40 +140,51 @@ def network_events(evs: list[dict], ip: str, days: float = 7) -> list[dict]:
             for a in sorted(agg.values(), key=lambda x: -x["Sessions"])][:500]
 
 
+def _by_key(rows: list[dict]) -> dict[tuple, list[dict]]:
+    """Rollup rows by (group, sample key): rows that share a sample key came from the same event."""
+    idx: dict[tuple, list[dict]] = defaultdict(list)
+    for e in rows:
+        for k in e["SampleKeys"] or []:
+            idx[(e["SourceGroup"], k)].append(e)
+    return idx
+
+
 def timeline(ents: list[dict], value: str, days: float = 7) -> list[dict]:
-    """Every index event touching the value, oldest first, one row per event."""
+    """One point per HuntEntity row that holds the value (an hour of one source, role and result),
+    oldest first. Entities lists other values seen in the same sampled events."""
     v, short = value_forms(value)
-    since = _since(days)
-    keys = {}
-    for e in ents:
-        if e["EventStartTime"] >= since and (e["ValueNorm"] in (v, short) or (e["Value"] or "").lower() == v):
-            keys[(e["SourceGroup"], e["SourceRecordKey"])] = e
-    others = defaultdict(list)
-    for e in ents:
-        k = (e["SourceGroup"], e["SourceRecordKey"])
-        if k in keys:
-            others[k].append(f"{e['EntityType']}:{e['Role']}={e['Value']}")
+    rows = _rows(ents, _since(days))
+    hits = [e for e in rows if _match(e, v, short)]
+    idx = _by_key(rows)
     out = []
-    for k, e in sorted(keys.items(), key=lambda kv: kv[1]["EventStartTime"]):
-        out.append({"EventStartTime": _iso(e["EventStartTime"]), "SourceTable": e["SourceTable"],
-                    "SourceGroup": e["SourceGroup"], "EventType": e["EventType"], "EventResult": e["EventResult"],
-                    "MatchedAs": f"{e['EntityType']}:{e['Role']}", "Tier": e["MappingTier"],
-                    "Entities": sorted(set(others[k])), "SourceRecordKey": e["SourceRecordKey"]})
+    for e in sorted(hits, key=lambda x: (x["FirstSeen"], x["SourceGroup"])):
+        others = {f"{o['EntityType']}:{o['Role']}={o['Value']}" for k in e["SampleKeys"] or []
+                  for o in idx[(e["SourceGroup"], k)] if not _match(o, v, short)}
+        out.append({"EventStartTime": _iso(e["FirstSeen"]), "LastSeen": _iso(e["LastSeen"]), "Count": int(e["Count"]),
+                    "SourceTable": e["SourceTable"], "SourceGroup": e["SourceGroup"], "EventType": e["EventType"],
+                    "EventResult": e["EventResult"], "MatchedAs": f"{e['EntityType']}:{e['Role']}",
+                    "Tier": e["MappingTier"], "Value": e["Value"], "Entities": sorted(others),
+                    "SampleKeys": list(e["SampleKeys"] or []),
+                    "SourceRecordKey": (e["SampleKeys"] or [""])[0]})
     return out
 
 
 def related(ents: list[dict], value: str, days: float = 7, limit: int = 25) -> list[dict]:
-    """Other entities seen in the same events as the value: the next things to pivot on."""
+    """Other entities that share a sampled event with the value: the next things to pivot on.
+    Events counts the shared sample events, so it is a lower bound."""
     v, short = value_forms(value)
-    since = _since(days)
-    keys = {(e["SourceGroup"], e["SourceRecordKey"]) for e in ents
-            if e["EventStartTime"] >= since and (e["ValueNorm"] in (v, short) or (e["Value"] or "").lower() == v)}
+    rows = _rows(ents, _since(days))
+    keys = {(e["SourceGroup"], k) for e in rows if _match(e, v, short) for k in e["SampleKeys"] or []}
     agg: dict[tuple, dict] = {}
-    for e in ents:
-        if (e["SourceGroup"], e["SourceRecordKey"]) not in keys or e["ValueNorm"] in (v, short):
+    for e in rows:
+        if _match(e, v, short):
+            continue
+        shared = {(e["SourceGroup"], k) for k in e["SampleKeys"] or []} & keys
+        if not shared:
             continue
         k = (e["EntityType"], e["ValueNorm"])
-        a = agg.setdefault(k, {"EntityType": k[0], "Value": e["ValueNorm"], "Events": 0, "Sources": set(), "Roles": set()})
-        a["Events"] += 1; a["Sources"].add(e["SourceGroup"]); a["Roles"].add(e["Role"])
-    return [{**a, "Sources": sorted(a["Sources"]), "Roles": sorted(a["Roles"])}
-            for a in sorted(agg.values(), key=lambda x: (-len(x["Sources"]), -x["Events"]))][:limit]
+        a = agg.setdefault(k, {"EntityType": k[0], "Value": e["ValueNorm"], "_keys": set(), "Sources": set(), "Roles": set()})
+        a["_keys"] |= shared; a["Sources"].add(e["SourceGroup"]); a["Roles"].add(e["Role"])
+    out = [{"EntityType": a["EntityType"], "Value": a["Value"], "Events": len(a["_keys"]),
+            "Sources": sorted(a["Sources"]), "Roles": sorted(a["Roles"])} for a in agg.values()]
+    return sorted(out, key=lambda x: (-len(x["Sources"]), -x["Events"], x["Value"]))[:limit]

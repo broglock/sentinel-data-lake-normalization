@@ -19,7 +19,7 @@ Version 1.0.0. Demo mode runs anywhere with no Azure access. Live mode runs in t
 | Screen | Purpose |
 |---|---|
 | Home | The three jobs (Hunt, Onboard a source, Review and approve) with live counts, and one Needs attention list: sources to review, sources below the 90% extraction target, checks waiting on a person, pending approvals. |
-| Hunt | One search for an IP, a user in any format, a host, URL or hash. A one-line summary, a timeline per source, and tabs for where it appears, events, sign-ins, network sessions and entities seen with it. Every row opens the original log line. A pasted list becomes pick-one chips. |
+| Hunt | One search for an IP, a user in any format, a host, URL or hash. A one-line summary, a timeline per source, and tabs for where it appears, activity by hour, sign-ins, network sessions and entities seen with it. Every row opens the original log line. A pasted list becomes pick-one chips. |
 | Onboard | One flow per source: pick source → decide fields → preview → submit → deploy → validate. Fields are one-line rows with a recommendation; Change opens the plain-language choices. Generated YAML and KQL stay folded. |
 | Approve | An inbox of pending changes. Each card says in plain words what the change does, with the preview numbers. Approve, or reject with a reason. Admins only. |
 | More | Coverage (extraction per source and drift), Registry (versions, YAML export), Connectors (Content hub catalog and plans), Build and deploy (all jobs and the bundle), API and agents, Settings and audit, About. |
@@ -139,8 +139,8 @@ Agents can draft and submit mappings. They cannot make anything live: approval s
 
 | Check | Result |
 |---|---|
-| `python -m pytest tests` | 18 API tests and the browser tests in tests/test_ui.py (Home, role-based navigation, Hunt, the full onboarding flow, Approve, validation) pass: engine rules, the onboarding flow, drift and noise exclusion, role enforcement, MCP, live provider requests against a mocked Azure, and every generated KQL job and MCP query parsed with Microsoft's Kusto.Language library |
-| `python tests/parity_spark.py` | The in-app engine and the lake notebook (Spark) produce the same 6,615 index rows from the demo week, record keys included |
+| `python -m pytest tests` | 50 tests: the API tests and the browser tests in tests/test_ui.py (Home, role-based navigation, Hunt, the full onboarding flow, Approve, validation) pass: engine rules, the onboarding flow, drift and noise exclusion, role enforcement, MCP, live provider requests against a mocked Azure, and every generated KQL job and MCP query parsed with Microsoft's Kusto.Language library |
+| `python tests/parity_spark.py` | The in-app engine and the lake notebook (Spark) produce the same 8,951 HuntEntity rows (hourly rollup and `_stats` rows, counts and sample keys included) and the same 2,370 HuntEvent rows from the demo week |
 | Bicep | `main.bicep` and `roles.bicep` compile with Bicep 0.48.1 |
 | Deploy scripts | `deploy.ps1` parses with PowerShell 7.4; `deploy.sh` passes `bash -n` |
 

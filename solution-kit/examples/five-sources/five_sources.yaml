@@ -20,7 +20,7 @@ groups:
     vendor: Microsoft
     product: Security Events
     schema: Authentication
-    engine: kql_job
+    status: approved
     asim_reference: _Im_Authentication_MicrosoftWindowsEvent
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", Computer, "|", tostring(EventID), "|", TargetUserName, "|", IpAddress))'
@@ -44,7 +44,7 @@ groups:
     vendor: Fortinet
     product: FortiGate
     schema: NetworkSession
-    engine: kql_job
+    status: approved
     asim_reference: _Im_NetworkSession_FortinetFortiGate
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", DeviceName, "|", SourceIP, "|", DestinationIP, "|", tostring(SourcePort)))'
@@ -71,7 +71,7 @@ groups:
     vendor: OpenBSD
     product: OpenSSH
     schema: Authentication
-    engine: kql_job
+    status: approved
     asim_reference: _Im_Authentication_Sshd
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", Computer, "|", SyslogMessage))'
@@ -110,7 +110,7 @@ groups:
     vendor: Contoso
     product: Expenses
     schema: Authentication
-    engine: notebook
+    status: proposed
     time_column: TimeGenerated
     record_key: 'tostring(Properties.eventId)'
     spark_record_key: "get_json_object(Properties, '$.eventId')"
@@ -131,7 +131,7 @@ groups:
     vendor: Unknown
     product: VPN appliance
     schema: ""
-    engine: notebook
+    status: proposed
     time_column: TimeGenerated
     record_key: 'hash_sha256(strcat(format_datetime(TimeGenerated, "yyyy-MM-dd HH:mm:ss.fff"), "|", RawData))'
     spark_record_key: "sha2(concat_ws('|', date_format(TimeGenerated, 'yyyy-MM-dd HH:mm:ss.SSS'), coalesce(RawData, '')), 256)"

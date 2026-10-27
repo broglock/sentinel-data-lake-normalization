@@ -1,7 +1,8 @@
-"""Local test of notebooks/02_index_longtail.py with a fake Sentinel provider.
+"""Local test of the three notebooks with a fake Sentinel provider.
 
-Runs the long-tail indexer on sample rows for every example group (engine forced to
-notebook) and checks the entity rows it produces. Needs pyspark and Java:
+Runs notebook 02 on sample rows for every example group (engine forced to notebook) and checks
+the hourly rollup, the _stats rows and the HuntEvent rows it produces; then notebook 01
+(change-driven inventory) and notebook 03 (coverage from _stats rows). Needs pyspark and Java:
   python tests/test_notebook_local.py
 """
 import importlib.util
@@ -75,10 +76,14 @@ class FakeProvider:
 p = FakeProvider()
 counts = nb.run(spark, p, cfg, now=NOW)
 print("rows per group:", counts)
-ents = p.saved["HuntEntity_SPRK"]
+saved = p.saved["HuntEntity_SPRK"]
+ents = [r for r in saved if r["EntityType"] != "_stats"]
+stats = {(r["SourceGroup"], r["Role"]): r["Count"] for r in saved if r["EntityType"] == "_stats"}
+print("stats:", stats)
 for r in sorted(ents, key=lambda r: (r["SourceGroup"], r["EntityType"], r["ValueNorm"])):
     print(f'{r["SourceGroup"]:<32} {r["EntityType"]:<6} {r["Role"]:<7} {r["ValueNorm"]:<26} '
-          f'{r["ValueType"]:<8} {r["MappingLayer"]:<10} T{r["MappingTier"]} {r["EventType"] or "-"}/{r["EventResult"] or "-"}')
+          f'{r["ValueType"]:<8} {r["MappingLayer"]:<10} T{r["MappingTier"]} {r["EventType"] or "-"}/{r["EventResult"] or "-"} '
+          f'n={r["Count"]} keys={len(r["SampleKeys"])}')
 
 
 def has(group, etype, norm, role=None, tier=None):
@@ -109,6 +114,16 @@ pan = [e for e in events if e["SourceGroup"] == "CEF:Palo Alto Networks/PAN-OS"]
 checks.append(len(pan) == 1 and pan[0]["EventResult"] == "Failure" and pan[0]["DstZone"] == "untrust")
 aud = [r for r in ents if r["SourceGroup"] == "AppAudit_CL:v2"]
 checks.append(all(r["EventResult"] == "Failure" for r in aud))
+# hourly rollup: one row per hour/group/entity/role/result, with count and sample keys
+checks.append(all(r["Count"] >= 1 and 1 <= len(r["SampleKeys"]) <= 3 and r["Hour"].minute == 0 for r in ents))
+# _stats rows: cron is filtered out, so sshd read 3 rows; 2 matched a template; all 3 produced an entity
+checks.append(stats.get(("Syslog:sshd", "RowsRead")) == 3 and stats.get(("Syslog:sshd", "RowsWithEntity")) == 3
+              and stats.get(("Syslog:sshd", "RowsTemplateMatched")) == 2)
+checks.append(stats.get(("AppAudit_CL:v2", "RowsRead")) == 1 and ("AppAudit_CL:v2", "RowsTemplateMatched") not in stats)
+# Tier 1 templates write HuntEvent rows too
+ssh = sorted((e["EventResult"], e["TargetUsername"], e["SrcIpAddr"]) for e in events if e["SourceGroup"] == "Syslog:sshd")
+print("sshd events:", ssh)
+checks.append(ssh == [("Failure", "admin", "203.0.113.45"), ("Success", "deploy", "198.51.100.20")])
 print("checks:", checks)
 assert all(checks), "a check failed"
 print("ALL CHECKS PASSED")
@@ -120,7 +135,7 @@ spec3 = importlib.util.spec_from_file_location("nb3", os.path.join(KIT, "noteboo
 nb3 = importlib.util.module_from_spec(spec3); spec3.loader.exec_module(nb3)
 
 tables["HuntEntity_SPRK"] = spark.createDataFrame(
-    [{**r, "TimeGenerated": NOW} for r in ents]).select(*[c for c, _ in cfg["entity_columns"]], "TimeGenerated")
+    [{**r, "TimeGenerated": NOW} for r in saved]).select(*[c for c, _ in cfg["entity_columns"]], "TimeGenerated")
 
 
 class FakeProvider2(FakeProvider):
@@ -128,13 +143,17 @@ class FakeProvider2(FakeProvider):
         return ["Syslog", "CommonSecurityLog", "AppAudit_CL", "Appliance_CL", "HuntEntity_SPRK"]
 
     def read_table(self, name, database_name=None, database_id=None):
+        if name in self.saved:
+            return spark.createDataFrame(self.saved[name])
         if name not in tables:
             raise ValueError("no such table")
         return tables[name]
 
 
 p2 = FakeProvider2()
-inv_df, mined = nb1.run(spark, p2, cfg["vocab"], now=NOW)
+inv_df, mined, done = nb1.run(spark, p2, cfg, now=NOW)
+print("first run read:", [(d["TableName"], d["Reason"]) for d in done])
+assert sorted(d["TableName"] for d in done) == ["AppAudit_CL", "Appliance_CL", "CommonSecurityLog", "Syslog"]
 inv = {(r["TableName"], r["FieldPath"]): r for r in inv_df.collect()}
 print("inventory rows:", len(inv))
 for k in [("AppAudit_CL", "Properties.client.addr"), ("AppAudit_CL", "Properties.actor.upn"),
@@ -148,9 +167,27 @@ for r in mined.orderBy("TableName", "GroupKey", F.desc("Lines")).collect():
     print("template:", r["TableName"], r["GroupKey"], r["Lines"], r["Template"][:90])
 assert any("Failed password for invalid user admin from <IP> port <NUM> ssh2" == r["Template"] for r in mined.collect())
 
+# Second run, nothing changed: every table is skipped (only the column lists are read).
+_, _, done2 = nb1.run(spark, p2, cfg, now=NOW)
+print("second run read:", done2)
+assert done2 == []
+# sshd approved (KQL job) and 1 of its 3 lines matched no template (33% > 5%): only those lines are mined.
+cfg_ap = json.loads(json.dumps(cfg))
+for g in cfg_ap["groups"]:
+    if g["id"] == "Syslog:sshd":
+        g["engine"] = "kql_job"
+_, mined3, done3 = nb1.run(spark, p2, cfg_ap, now=NOW)
+print("drift run read:", [(d["TableName"], d["Reason"]) for d in done3])
+assert [(d["TableName"], d["Reason"]) for d in done3] == [("Syslog", "unmatched lines")]
+t3 = [r["Template"] for r in mined3.collect()]
+print("drift templates:", t3)
+assert len(t3) == 1 and t3[0].startswith("Connection closed by <IP>")
+
 cov = nb3.run(spark, p2, cfg, now=NOW + __import__("datetime").timedelta(hours=1))
 for r in cov:
     print("coverage:", r["SourceGroup"], "tier", r["Tier"], "raw", r["RawRows"], "indexed", r["IndexedRows"],
           "extraction", r["ExtractionRate"], "templates", r["TemplateMatchRate"], "|", r["Status"])
 assert all(r["ExtractionRate"] == 1.0 for r in cov)
+sshd = next(r for r in cov if r["SourceGroup"] == "Syslog:sshd")
+assert sshd["RawRows"] == 3 and abs(sshd["TemplateMatchRate"] - 0.6667) < 0.001
 print("NOTEBOOK 01 AND 03 CHECKS PASSED")

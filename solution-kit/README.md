@@ -8,12 +8,12 @@ Working files for the design in the Claude Doc "ASIM-style hunting on the Sentin
 |---|---|
 | `registry/groups.example.yaml` | Grammar-group registry: one entry per table and message format, with field rules, templates, result and record-key expressions. Four worked examples: Linux sshd syslog, Palo Alto CEF, a custom JSON table, a raw custom table. |
 | `registry/vocab.yaml` | Result vocabulary, role tokens, synonyms, null values. |
-| `generator/generate.py` | Turns the registry into KQL job queries (`HuntEntity`, `HuntEvent`) and `notebook_config.json`. |
+| `generator/generate.py` | Turns the registry into KQL job queries and `notebook_config.json`. Approved groups (`status: approved`) are batched into one entity job and at most one event job per source table; everything else goes to the notebook. |
 | `generator/asim_expand.py` | Makes an ASIM parser's KQL lake-safe: parameters to `let`, known helpers inlined, remaining function calls reported. |
-| `notebooks/01_inventory_and_mining.py` | Daily: field inventory with value classes and proposed ASIM names and roles; template mining by token masking. |
-| `notebooks/02_index_longtail.py` | Hourly: indexes every `engine: notebook` group into `HuntEntity_SPRK` and `HuntEvent_SPRK`. |
-| `notebooks/03_coverage.py` | Daily: per-group tier, extraction rate, template match rate, unknown-role share, status. |
-| `mcp/tools.yaml` | Seven MCP tools with their KQL and the agent instructions. |
+| `notebooks/01_inventory_and_mining.py` | Daily and change-driven: reads only new tables, tables whose schema changed, and approved groups whose unmatched share went above 5%. Writes the field inventory with proposed ASIM names and roles, and mines templates from unmatched lines only. |
+| `notebooks/02_index_longtail.py` | Hourly: indexes the groups not yet approved into `HuntEntity_SPRK` (hourly rollup plus `_stats` rows) and `HuntEvent_SPRK`. |
+| `notebooks/03_coverage.py` | Daily: per-group tier, extraction rate, template match rate, unknown-role share and status, from the `_stats` rows; reads no source table. |
+| `mcp/tools.yaml` | Seven MCP tools with their KQL and the agent instructions. hunt_value and hunt_entity sum `Count` over the rollup; auth_events and network_events read HuntEvent. |
 | `examples/five-sources/` | Five log sources end to end (Windows SecurityEvent, FortiGate CEF, sshd Syslog, a JSON app table, a raw VPN table): registry, generated KQL, demo script and `output.md` with the actual index rows and hunt results. |
 | `tests/run_all.sh` | Offline checks: generator, KQL parse and schema check (Microsoft Kusto.Language library), ASIM expander, notebooks with a fake provider (pyspark). |
 | `tests/lab-test-plan.md` | Tests to run in a lab tenant for the open questions. |
@@ -21,9 +21,9 @@ Working files for the design in the Claude Doc "ASIM-style hunting on the Sentin
 ## Order of work
 
 1. Run `notebooks/01_inventory_and_mining.py` in the lake to get `FieldInventory_SPRK` and `TemplateCandidates_SPRK`.
-2. Write registry entries for the grammar groups, starting with the highest volume. Use the proposals; review roles and results by hand.
-3. Run `tests/run_all.sh`, then `generator/generate.py`.
-4. Create KQL jobs from `out/kql_jobs/*.kql` (hourly, start minutes staggered, output appended to the lake tables). Create the notebook jobs for 02 (hourly) and 01, 03 (daily) with `notebook_config.json` pasted in.
+2. Write registry entries for the grammar groups, starting with the highest volume. Use the proposals; review roles and results by hand. New entries start as `status: proposed` and are indexed by notebook 02.
+3. When a group's coverage is good, set `status: approved`. Run `tests/run_all.sh`, then `generator/generate.py`.
+4. Create KQL jobs from `out/kql_jobs/*.kql` (one entity job and at most one event job per source table; hourly, start minutes staggered, output appended to the lake tables). Create the notebook jobs for 02 (hourly) and 01, 03 (daily) with `notebook_config.json` pasted in. Notebook 02 skips approved groups, and notebook 01 only returns to them when their unmatched share rises.
 5. Save the MCP tools and the agent instructions.
 6. Check `HuntCoverage_SPRK` after a day; work the groups whose status is not `ok`.
 

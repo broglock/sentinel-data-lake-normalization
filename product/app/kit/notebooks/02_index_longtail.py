@@ -1,7 +1,14 @@
 # %% [markdown]
-# # 02 Index long tail
-# Indexes every registry group with `engine: notebook` into HuntEntity_SPRK (and
-# HuntEvent_SPRK for Tier 1 groups). Schedule as a notebook job, hourly.
+# # 02 Index unreviewed sources
+# Indexes the registry groups whose engine is `notebook` (groups not yet approved) into
+# HuntEntity_SPRK and, for Tier 1 rules, HuntEvent_SPRK. Approved groups run in KQL jobs and
+# this notebook never reads them. Schedule as a notebook job, hourly; each run reads one
+# aligned hour of the source tables, never older data.
+#
+# HuntEntity rows are an hourly rollup (one row per hour, group, entity, role and result,
+# with Count, FirstSeen, LastSeen and up to three sample record keys), plus "_stats" rows
+# with the counts notebook 03 uses for coverage: rows read, rows with an entity, rows
+# matched by a template. Same shape as the KQL jobs.
 # Uses only PySpark and the Sentinel Provider library (no pip packages in lake notebooks).
 #
 # Inputs: notebook_config.json produced by generator/generate.py. Paste its content into
@@ -198,29 +205,17 @@ def normalize(df: DataFrame, nulls: list) -> DataFrame:
     return df.where(F.col("ValueNorm").isNotNull() & (F.col("ValueNorm") != ""))
 
 
-def event_rows(base: DataFrame, group: dict, cfg: dict) -> DataFrame | None:
-    """HuntEvent rows for Tier 1 groups with structured field rules."""
-    if int(group.get("tier", 2)) != 1 or not group.get("fields"):
-        return None
-    nulls = [str(n) for n in cfg["vocab"].get("null_values", [])]
+def clean_event(name: str, col, nulls: list):
+    """Null markers become empty; IP columns lose ports and brackets (same rules as HuntEntity)."""
+    c = F.trim(col)
+    c = F.when(F.lower(c).isin(nulls), F.lit("")).otherwise(c)
+    if name.endswith("IpAddr"):
+        c = F.when(F.size(F.split(c, ":")) >= 3, F.lower(F.regexp_replace(F.split(c, "%").getItem(0), r"[\[\]]", ""))) \
+             .otherwise(F.regexp_extract(c, r"(\d{1,3}(?:\.\d{1,3}){3})", 1))
+    return c
 
-    def clean(name: str, col):
-        """Null markers become empty; IP columns lose ports and brackets (same rules as HuntEntity)."""
-        c = F.trim(col)
-        c = F.when(F.lower(c).isin(nulls), F.lit("")).otherwise(c)
-        if name.endswith("IpAddr"):
-            c = F.when(F.size(F.split(c, ":")) >= 3, F.lower(F.regexp_replace(F.split(c, "%").getItem(0), r"[\[\]]", ""))) \
-                 .otherwise(F.regexp_extract(c, r"(\d{1,3}(?:\.\d{1,3}){3})", 1))
-        return c
 
-    mapped = {f["asim"]: clean(f["asim"], field_col(base, f)) for f in group["fields"] if f.get("asim")}
-    for c in group.get("constant_entities", []):
-        if c.get("asim"):
-            mapped[c["asim"]] = clean(c["asim"], field_col(base, c))
-    mapped.update({"SourceTable": F.lit(group["table"]), "SourceGroup": F.lit(group["id"]),
-                   "EventVendor": F.lit(group.get("vendor", "")), "EventProduct": F.lit(group.get("product", "")),
-                   "EventSchema": F.lit(group.get("schema", "")), "EventType": event_type_col(base, group),
-                   "EventResult": result_col(base, group, cfg["vocab"]), "MappingTier": F.lit(1)})
+def project_event(df: DataFrame, mapped: dict, cfg: dict) -> DataFrame:
     cols = []
     for name, typ in cfg["event_columns"]:
         spark_type = {"string": "string", "int": "int", "datetime": "timestamp"}[typ]
@@ -228,7 +223,74 @@ def event_rows(base: DataFrame, group: dict, cfg: dict) -> DataFrame | None:
             cols.append(F.col(name))
         else:
             cols.append(mapped.get(name, F.lit(None)).cast(spark_type).alias(name))
-    return base.select(*cols)
+    return df.select(*cols)
+
+
+def event_rows(base: DataFrame, group: dict, cfg: dict) -> DataFrame | None:
+    """HuntEvent rows: Tier 1 groups with field rules, and Tier 1 templates on text sources."""
+    nulls = [str(n) for n in cfg["vocab"].get("null_values", [])]
+    common = {"SourceTable": F.lit(group["table"]), "SourceGroup": F.lit(group["id"]),
+              "EventVendor": F.lit(group.get("vendor", "")), "EventProduct": F.lit(group.get("product", "")),
+              "EventSchema": F.lit(group.get("schema", "")), "MappingTier": F.lit(1)}
+    consts = {c["asim"]: clean_event(c["asim"], field_col(base, c), nulls)
+              for c in group.get("constant_entities", []) if c.get("asim")}
+    parts = []
+    if int(group.get("tier", 2)) == 1 and group.get("fields"):
+        mapped = {f["asim"]: clean_event(f["asim"], field_col(base, f), nulls) for f in group["fields"] if f.get("asim")}
+        mapped.update(consts)
+        mapped.update(common, EventType=event_type_col(base, group), EventResult=result_col(base, group, cfg["vocab"]))
+        parts.append(project_event(base, mapped, cfg))
+    text = group.get("text_column")
+    by_id = {t["id"]: t for t in group.get("templates", []) or []}
+    for et in group.get("event_templates", []) or []:
+        t = by_id[et["id"]]
+        rx = t["regex_plain"]
+        b = base.where(F.col(text).contains(t["match"]) & F.col(text).rlike(rx))
+        mapped = dict(consts)
+        for col, slot in et["columns"].items():
+            mapped[col] = clean_event(col, F.regexp_extract(F.col(text), rx, int(t["group_index"][slot])), nulls)
+        mapped.update(common, EventType=F.lit(t.get("event_type", "")), EventResult=F.lit(t.get("event_result", "")))
+        parts.append(project_event(b, mapped, cfg))
+    if not parts:
+        return None
+    out = parts[0]
+    for p in parts[1:]:
+        out = out.unionByName(p)
+    return out
+
+
+def rollup(occ: DataFrame, cfg: dict) -> DataFrame:
+    """One HuntEntity row per hour, group, entity, role and result. SampleKeys holds the first
+    record keys in sort order and Value the smallest original form, so runs are repeatable."""
+    n = int(cfg.get("sample_keys", 3))
+    return (occ.groupBy(F.date_trunc("hour", F.col("EventStartTime")).alias("Hour"), *cfg["rollup_keys"])
+               .agg(F.count(F.lit(1)).alias("Count"), F.min("EventStartTime").alias("FirstSeen"),
+                    F.max("EventStartTime").alias("LastSeen"),
+                    F.slice(F.array_sort(F.collect_set("SourceRecordKey")), 1, n).alias("SampleKeys"),
+                    F.min("Value").alias("Value")))
+
+
+def stats_rows(base: DataFrame, occ: DataFrame, group: dict) -> DataFrame:
+    """_stats rows per hour: RowsRead, RowsWithEntity, RowsTemplateMatched."""
+    hour = F.date_trunc("hour", F.col("EventStartTime")).alias("Hour")
+    span = [F.min("EventStartTime").alias("FirstSeen"), F.max("EventStartTime").alias("LastSeen")]
+    parts = [base.groupBy(hour).agg(F.count(F.lit(1)).alias("Count"), *span).withColumn("Role", F.lit("RowsRead")),
+             occ.groupBy(hour).agg(F.countDistinct("SourceRecordKey").alias("Count"), *span)
+                .withColumn("Role", F.lit("RowsWithEntity"))]
+    if group.get("text_column") and group.get("templates"):
+        parts.append(occ.where(F.col("MappingLayer") == "template").groupBy(hour)
+                        .agg(F.countDistinct("SourceRecordKey").alias("Count"), *span)
+                        .withColumn("Role", F.lit("RowsTemplateMatched")))
+    out = parts[0]
+    for p in parts[1:]:
+        out = out.unionByName(p)
+    blank = ["EventVendor", "EventProduct", "EventSchema", "EventType", "EventResult", "Value", "ValueNorm",
+             "ValueType", "MappingLayer"]
+    for c in blank:
+        out = out.withColumn(c, F.lit(""))
+    return (out.withColumn("SourceTable", F.lit(group["table"])).withColumn("SourceGroup", F.lit(group["id"]))
+               .withColumn("EntityType", F.lit("_stats")).withColumn("MappingTier", F.lit(None).cast("int"))
+               .withColumn("SampleKeys", F.array().cast("array<string>")))
 
 
 def load_base(provider, group: dict, start: datetime, end: datetime) -> DataFrame:
@@ -242,8 +304,14 @@ def load_base(provider, group: dict, start: datetime, end: datetime) -> DataFram
 
 
 def finish(df: DataFrame, columns: list) -> DataFrame:
-    order = [c for c, _ in columns]
-    return df.select(*order).withColumn("TimeGenerated", F.current_timestamp())
+    types = {"string": "string", "int": "int", "long": "long", "datetime": "timestamp", "dynamic": "array<string>"}
+    return df.select(*[F.col(c).cast(types[t]).alias(c) for c, t in columns]).withColumn("TimeGenerated", F.current_timestamp())
+
+
+def entity_table(base: DataFrame, group: dict, cfg: dict) -> DataFrame:
+    occ = entity_rows(base, group, cfg).cache()
+    out = rollup(occ, cfg).unionByName(stats_rows(base, occ, group))
+    return finish(out, cfg["entity_columns"])
 
 
 def run(spark, provider, cfg: dict, now: datetime | None = None) -> dict:
@@ -254,9 +322,9 @@ def run(spark, provider, cfg: dict, now: datetime | None = None) -> dict:
     counts = {}
     for group in cfg["groups"]:
         if group.get("engine") != "notebook":
-            continue
+            continue  # approved groups run in KQL jobs; this notebook never reads them
         base = load_base(provider, group, start, end).cache()
-        ents = finish(entity_rows(base, group, cfg), cfg["entity_columns"])
+        ents = entity_table(base, group, cfg)
         provider.save_as_table(ents, ENTITY_TABLE, write_options={"mode": "append"})
         counts[group["id"]] = ents.count()
         ev = event_rows(base, group, cfg)

@@ -56,7 +56,7 @@ A mapping is decided once. After approval, the only recurring work for a source 
 
 ![Hundreds of sources, one index, one set of field names](img/03-architecture.png)
 
-How to read it: the top row runs left to right. Source tables of every shape feed the index builders, which write the two index tables that the agent and analysts query. Every index row leads back to its raw records, so a hit is one pivot from the full event. The bottom row is the control loop: notebook 01 reads the sources and proposes mappings, analysts approve them in the registry, the registry generates the builders, and notebook 03 measures each source's coverage and flags the ones that drift back for review.
+How to read it: the top row runs left to right. Source tables of every shape feed the index builders. Approved groups run in one KQL job per source table; only groups still under review run in the lake notebook. Both write the two index tables that the agent and analysts query: HuntEntity holds hourly entity counts plus each job's row counts, and HuntEvent holds one row per Tier 1 event. Every index row carries sample record keys, so a hit is one pivot from the raw events. The bottom row is the control loop: notebook 01 reads only new or changed tables and drifting groups and proposes mappings, analysts approve them in the registry, the registry generates the builders, and notebook 03 measures coverage from the job counts. The note on the right is the drift rule that sends an approved group back to notebook 01.
 
 ## One question, five sources
 

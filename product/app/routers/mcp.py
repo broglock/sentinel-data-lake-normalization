@@ -20,7 +20,8 @@ router = APIRouter()
 PROTOCOL = "2025-06-18"
 
 INSTRUCTIONS = (
-    "Hunt across every log source through the normalized index. Start with hunt_value, report how many "
+    "Hunt across every log source through the normalized index (an hourly rollup of entity counts, plus "
+    "per-event rows for Tier 1 sources). Start with hunt_value, report how many "
     "sources matched and at which tier, treat Role=Unknown as unknown, and fetch originals with pivot_raw before "
     "quoting raw fields. Run search_raw on tables listed by coverage before saying a value was not seen. "
     "For onboarding: list_sources, then propose_mapping, adjust the decisions, preview_mapping until extraction "
@@ -41,10 +42,10 @@ TOOLS: list[dict] = [
      "inputSchema": {"type": "object", "properties": {"ip": S, "days": N}, "required": ["ip"]}},
     {"name": "timeline", "role": "viewer", "description": "Every indexed event touching a value, oldest first, with the other entities in each event.",
      "inputSchema": {"type": "object", "properties": {"value": S, "days": N}, "required": ["value"]}},
-    {"name": "related", "role": "viewer", "description": "Entities that appear in the same events as a value: the next things to pivot on.",
+    {"name": "related", "role": "viewer", "description": "Entities that appear in the same sampled events as a value: the next things to pivot on.",
      "inputSchema": {"type": "object", "properties": {"value": S, "days": N}, "required": ["value"]}},
-    {"name": "pivot_raw", "role": "viewer", "description": "The original log row behind an index row (use SourceTable, EventStartTime, Value, SourceRecordKey and SourceGroup from a result).",
-     "inputSchema": {"type": "object", "properties": {"table": S, "time": S, "value": S, "key": S, "group": S}, "required": ["table", "time", "value"]}},
+    {"name": "pivot_raw", "role": "viewer", "description": "The original log rows behind an index row. Use SourceTable, EventStartTime (or FirstSeen) as time, LastSeen as until, Value, SourceGroup, and SourceRecordKey or comma-separated SampleKeys as key.",
+     "inputSchema": {"type": "object", "properties": {"table": S, "time": S, "until": S, "value": S, "key": S, "group": S}, "required": ["table", "time", "value"]}},
     {"name": "search_raw", "role": "analyst", "description": "Free-text search of one raw table, for values the index did not map. Keep hours small.",
      "inputSchema": {"type": "object", "properties": {"table": S, "text": S, "hours": N}, "required": ["table", "text"]}},
     {"name": "coverage", "role": "viewer", "description": "How deeply each source is indexed: tier, extraction rate, template match rate, status.",
@@ -73,7 +74,8 @@ def _call(core, user: User, name: str, a: dict) -> Any:
     if name == "pivot_raw":
         from app.kit.generate import complete_group
         g = next((x for x in core.index_groups() if x["id"] == a.get("group")), None)
-        return p.pivot(a["table"], a["time"], a["value"], a.get("key", ""), complete_group(g) if g else None)
+        return p.pivot(a["table"], a["time"], a["value"], a.get("key", ""), complete_group(g) if g else None,
+                       a.get("until", ""))
     if name == "coverage":
         return core.coverage()
     if name == "list_sources":

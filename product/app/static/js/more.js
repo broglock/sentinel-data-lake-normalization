@@ -2,6 +2,9 @@
 import { ROUTES, $, $$, api, esc, num, pct, when, enc, ME, can, demoRole, toast, st, tier, layerTag, modal, jsyaml, pageHeader, disclose, renderNav, refreshPending, router, MORE_NAV } from "./core.js";
 import { barChart, spark } from "./charts.js";
 
+// same rule as kit/generate.py engine_of: approved groups run in KQL jobs, the rest in the notebook
+const engineOf = (g) => (g.status ? (g.status === "approved" ? "kql_job" : "notebook") : g.engine || "notebook");
+
 ROUTES.more = async (main) => {
   main.innerHTML = pageHeader("More", "Reference screens for setup and administration.") +
     `<div class="tasks">${MORE_NAV.filter(([, , r]) => can(r)).map(([k, label, , d]) => `<a class="task" href="#/${k}"><h2>${esc(label)}</h2><p class="muted">${esc(d)}</p></a>`).join("")}</div>`;
@@ -91,7 +94,7 @@ ROUTES.registry = async (main, gid) => {
     const [r, hist] = await Promise.all([api(`/registry/${enc(gid)}`), api(`/registry/${enc(gid)}/history`)]);
     const g = r.group;
     main.innerHTML = `<p><a href="#/registry">← Registry</a></p>${pageHeader(gid, `${st(r.status)} version ${r.version}, last changed by ${esc(r.updated_by)} at ${when(r.updated_at)}`)}
-      <div class="grid g2"><div class="card"><h2>Definition</h2><dl class="kv"><dt>Table</dt><dd>${esc(g.table)}</dd><dt>Filter</dt><dd class="mono">${esc(g.filter)}</dd><dt>Schema</dt><dd>${esc(g.schema || "–")}</dd><dt>Engine</dt><dd>${esc(g.engine)}</dd><dt>Mapped by</dt><dd>${layerTag(g.layer || "registry")}</dd><dt>Fields</dt><dd>${(g.fields || []).map((f) => `<span class="tag">${esc(f.column || f.path)} → ${esc(f.asim || f.entity + ":" + f.role)}</span>`).join("") || "–"}</dd><dt>Templates</dt><dd>${(g.templates || []).length}</dd></dl>
+      <div class="grid g2"><div class="card"><h2>Definition</h2><dl class="kv"><dt>Table</dt><dd>${esc(g.table)}</dd><dt>Filter</dt><dd class="mono">${esc(g.filter)}</dd><dt>Schema</dt><dd>${esc(g.schema || "–")}</dd><dt>Engine</dt><dd>${esc(engineOf(g))}</dd><dt>Mapped by</dt><dd>${layerTag(g.layer || "registry")}</dd><dt>Fields</dt><dd>${(g.fields || []).map((f) => `<span class="tag">${esc(f.column || f.path)} → ${esc(f.asim || f.entity + ":" + f.role)}</span>`).join("") || "–"}</dd><dt>Templates</dt><dd>${(g.templates || []).length}</dd></dl>
         <div class="row" style="margin-top:12px"><a class="btn" href="#/review/${enc(g.table)}">Open field review</a>${r.status === "draft" && can("analyst") ? `<button class="btn primary" id="sub">Submit for approval</button>` : ""}${r.status === "live" ? `<a class="btn" href="#/validation/${enc(gid)}">Validate</a>` : ""}${r.status !== "retired" && can("admin") ? `<button class="btn danger" id="ret">Retire</button>` : ""}</div></div>
       <div class="card"><h2>YAML</h2><pre>${esc(jsyaml(g))}</pre></div></div>
       <div class="card" style="margin-top:16px"><h2>History</h2><div class="tbl-wrap"><table><tr><th>Version</th><th>Status</th><th>By</th><th>When</th><th>Note</th></tr>${hist.map((h) => `<tr><td>${h.version}</td><td>${st(h.status)}</td><td>${esc(h.by)}</td><td>${when(h.at)}</td><td>${esc(h.note)}</td></tr>`).join("")}</table></div></div>`;
@@ -103,7 +106,7 @@ ROUTES.registry = async (main, gid) => {
   main.innerHTML = `${pageHeader("Registry", "One entry per table and message format; the single definition every job builds from.", `<a class="btn" href="/api/v1/registry/export" target="_blank">Export YAML</a>`)}
     <div class="card"><div class="row"><span class="muted small">${rows.length} entries</span></div>
     <div class="tbl-wrap" style="margin-top:10px"><table><tr><th>Group</th><th>Table</th><th>Status</th><th>Mapped by</th><th>Engine</th><th>Tier</th><th class="num">Version</th><th>Changed</th></tr>
-    ${rows.map((r) => `<tr class="click" onclick="location.hash='#/registry/${enc(r.id)}'"><td><b>${esc(r.id)}</b></td><td>${esc(r.group.table)}</td><td>${st(r.status)}</td><td>${layerTag(r.group.layer || "registry")}</td><td>${esc(r.group.engine)}</td><td>${tier(+r.group.tier || 1)}</td><td class="num">${r.version}</td><td>${when(r.updated_at)}</td></tr>`).join("")}</table></div></div>`;
+    ${rows.map((r) => `<tr class="click" onclick="location.hash='#/registry/${enc(r.id)}'"><td><b>${esc(r.id)}</b></td><td>${esc(r.group.table)}</td><td>${st(r.status)}</td><td>${layerTag(r.group.layer || "registry")}</td><td>${esc(engineOf(r.group))}</td><td>${tier(+r.group.tier || 1)}</td><td class="num">${r.version}</td><td>${when(r.updated_at)}</td></tr>`).join("")}</table></div></div>`;
 };
 
 // ------------------------------------------------------------------ build and deploy

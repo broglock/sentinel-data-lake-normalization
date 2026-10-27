@@ -4,10 +4,13 @@
 # feature expects. All queries are plain KQL with no stored functions.
 #
 # Collection description (paste into the collection or server instructions):
-#   Hunt across every log source through the normalized hunt index. Start with hunt_value
-#   or hunt_entity, report how many sources matched at each tier, treat Role=Unknown as
-#   unknown, fetch originals with pivot_raw before quoting raw fields, and run search_raw
-#   on the tables listed by coverage before saying a value was not seen.
+#   Hunt across every log source through the normalized hunt index. HuntEntity is an hourly
+#   rollup (Count of events per hour, source, entity, role and result); HuntEvent holds one
+#   row per event for Tier 1 sources. Start with hunt_value or hunt_entity, report how many
+#   sources matched at each tier, treat Role=Unknown as unknown, use auth_events or
+#   network_events for per-event detail, fetch originals with pivot_raw before quoting raw
+#   fields, and run search_raw on the tables listed by coverage before saying a value was
+#   not seen.
 
 tools:
 
@@ -25,11 +28,11 @@ tools:
                         v matches regex @"^[a-z0-9-]+(\.[a-z0-9-]+)+$" and isnull(parse_ipv4(v)), tostring(split(v, ".")[0]),
                         v);
       HuntIndexEntity
-      | where EventStartTime > ago({LookbackDays}d)
+      | where Hour > ago({LookbackDays}d) and EntityType != "_stats"
       | where ValueNorm in (v, vshort) or tolower(Value) == v
-      | summarize Events = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+      | summarize Events = sum(Count), FirstSeen = min(FirstSeen), LastSeen = max(LastSeen),
                   Roles = make_set(Role), ValueForms = make_set(Value, 10), Tiers = make_set(MappingTier),
-                  EventTypes = make_set(EventType, 10)
+                  EventTypes = make_set(EventType, 10), Results = make_set(EventResult)
           by SourceTable, SourceGroup, EntityType
       | order by Events desc
 
@@ -44,36 +47,33 @@ tools:
       let HuntIndexEntity = union isfuzzy=true HuntEntity_SPRK, HuntEntity_KQL;
       let v = tolower(trim(@"\s", "{Value}"));
       HuntIndexEntity
-      | where EventStartTime > ago({LookbackDays}d)
+      | where Hour > ago({LookbackDays}d)
       | where EntityType == "{EntityType}"
       | where "{Role}" == "*" or Role == "{Role}"
       | where ValueNorm == v or tolower(Value) == v or (EntityType == "url" and ValueNorm has v)
-      | summarize Events = count(), FirstSeen = min(EventStartTime), LastSeen = max(EventStartTime),
+      | summarize Events = sum(Count), FirstSeen = min(FirstSeen), LastSeen = max(LastSeen),
                   Results = make_set(EventResult), Tiers = make_set(MappingTier)
           by SourceTable, SourceGroup, Role
       | order by Events desc
 
   - name: auth_events
-    description: Logon events for a user with their result, from sources mapped at Tier 1.
+    description: Sign-in events for a user with their result and source IP, from Tier 1 sources (HuntEvent).
     parameters:
       - {name: User, description: "User in any format."}
       - {name: Result, description: "Success, Failure, or * for any."}
       - {name: LookbackDays, description: "Days to search back."}
     query: |
-      let HuntIndexEntity = union isfuzzy=true HuntEntity_SPRK, HuntEntity_KQL;
+      let HuntIndexEvent = union isfuzzy=true HuntEvent_SPRK, HuntEvent_KQL;
       let v = tolower(trim(@"\s", "{User}"));
       let vshort = case(v contains @"\", tostring(split(v, @"\")[1]), v contains "@", tostring(split(v, "@")[0]), v);
-      HuntIndexEntity
+      HuntIndexEvent
       | where EventStartTime > ago({LookbackDays}d)
-      | where EntityType == "user" and ValueNorm == vshort and MappingTier == 1
       | where EventType in ("Logon", "Logoff") or EventSchema == "Authentication"
+      | extend User = iff(isnotempty(TargetUsername), TargetUsername, ActorUsername)
+      | extend u = tolower(User)
+      | where case(u contains @"\", tostring(split(u, @"\")[1]), u contains "@", tostring(split(u, "@")[0]), u) == vshort
       | where "{Result}" == "*" or EventResult == "{Result}"
-      | join kind=leftouter (
-          HuntIndexEntity
-          | where EventStartTime > ago({LookbackDays}d) and EntityType == "ip" and Role == "Src"
-          | project SourceRecordKey, SrcIpAddr = ValueNorm
-        ) on SourceRecordKey
-      | project EventStartTime, SourceGroup, EventType, EventResult, User = Value, SrcIpAddr, SourceRecordKey
+      | project EventStartTime, SourceTable, SourceGroup, EventType, EventResult, User, SrcIpAddr, SourceRecordKey
       | order by EventStartTime desc
       | take 500
 
@@ -96,15 +96,17 @@ tools:
       | take 500
 
   - name: pivot_raw
-    description: Fetch the original log rows behind an index row.
+    description: Fetch the original log rows behind an index row (HuntEntity rows cover up to one hour).
     parameters:
       - {name: SourceTable, description: "SourceTable from the index row."}
-      - {name: EventStartTime, description: "EventStartTime from the index row, ISO 8601."}
+      - {name: FirstSeen, description: "FirstSeen (or EventStartTime) from the index row, ISO 8601."}
+      - {name: LastSeen, description: "LastSeen from the index row, ISO 8601; same as FirstSeen for a HuntEvent row."}
       - {name: Value, description: "The Value from the index row."}
     query: |
-      let t = todatetime("{EventStartTime}");
+      let t0 = todatetime("{FirstSeen}");
+      let t1 = todatetime("{LastSeen}");
       table("{SourceTable}")
-      | where TimeGenerated between ((t - 1s) .. (t + 1s))
+      | where TimeGenerated between ((t0 - 1s) .. (t1 + 1s))
       | where * has "{Value}"
       | take 20
 

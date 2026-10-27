@@ -8,3 +8,5 @@ var/
 *.tgz
 _repo_export*
 product/docs/demo/*.webm
+solution-kit/examples/five-sources/kql_out*/notebook/
+solution-kit/tests/node_modules/

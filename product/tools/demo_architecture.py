@@ -1,19 +1,20 @@
 """Opening chapter of the demo video: the architecture building blocks, revealed one step at a time.
 
-Every claim here matches the shipped kit: notebook 01 runs daily over every lake table (field inventory and
-template mining), proposals feed the review in Lake Hunt, an Admin approves, KQL jobs and notebook 02 index
-hourly, notebook 03 measures coverage daily.
+Every claim here matches the shipped kit: notebook 01 runs daily but reads only what changed (new tables,
+changed schemas, approved groups whose unmatched share rose), proposals feed the review in Lake Hunt, an Admin
+approves, approved groups run in KQL jobs and the rest in notebook 02, hourly, into an hourly rollup, and
+notebook 03 measures coverage daily from the jobs' own counts.
 """
 from __future__ import annotations
 
 # (step number, caption) in the order they are shown; each step reveals the elements marked data-step="<n>".
 STEPS = [
     (1, "Hundreds of tables land in the Sentinel data lake, each with its own field names."),
-    (2, "Every day, a scan samples recent rows of every table and records each field: its type, how full it is, and what its values look like."),
+    (2, "Every day, a scan looks only at what changed: new tables, changed schemas, and sources whose lines stopped matching. It records each new field: its type, how full it is, and what its values look like."),
     (3, "New tables and fields appear in Lake Hunt as proposals, table by table, for a person to confirm."),
     (4, "An Admin approves each mapping. Nothing reaches the tenant before that."),
-    (5, "Approved mappings become hourly index jobs that write one hunt index with ASIM field names."),
-    (6, "A daily coverage check flags drift when a vendor changes its log format, and sends the source back for review."),
+    (5, "Approved mappings move to hourly KQL jobs, one per table. The notebook only indexes sources still under review. Both write one hourly hunt index with ASIM field names."),
+    (6, "A daily coverage check reads the jobs' own row counts, flags drift when a vendor changes its log format, and sends the source back for review."),
     (7, "Here is that cycle in the app."),
 ]
 
@@ -55,8 +56,8 @@ svg{position:absolute;left:0;top:0;width:1440px;height:900px;pointer-events:none
   <div class="more">… hundreds more</div></div>
 
 <div class="box" data-step="2" id="scan" style="left:490px;top:140px;width:400px;height:262px">
-  <div class="k">Daily · notebook 01</div><h2>Scan for new fields</h2>
-  <ul><li>Samples recent rows of every table</li><li>Finds fields in columns, JSON and key=value text</li><li>Records type, fill rate and what the values look like</li><li>Mines message templates from raw text</li></ul></div>
+  <div class="k">Daily · notebook 01</div><h2>Scan what changed</h2>
+  <ul><li>New tables and changed schemas only</li><li>Finds fields in columns, JSON and key=value text</li><li>Records type, fill rate and what the values look like</li><li>Mines templates from lines no template matches</li></ul></div>
 
 <div class="box" data-step="3" id="review" style="left:980px;top:140px;width:390px;height:330px">
   <div class="k">Lake Hunt</div><h2>New fields, per table</h2>
@@ -67,11 +68,11 @@ svg{position:absolute;left:0;top:0;width:1440px;height:900px;pointer-events:none
 
 <div class="box" data-step="5" id="jobs" style="left:980px;top:530px;width:390px;height:180px">
   <div class="k">Hourly · KQL jobs and notebook 02</div><h2>Index jobs</h2>
-  <ul><li>Read the lake tables</li><li>Apply the approved mappings</li></ul></div>
+  <ul><li>Approved: one KQL job per table</li><li>Under review: notebook 02</li></ul></div>
 
 <div class="box" data-step="5" id="index" style="left:490px;top:530px;width:400px;height:180px">
   <div class="k">One table, ASIM field names</div><h2>Hunt index</h2>
-  <ul><li>Entity, role, source</li><li>A key back to the original row</li></ul></div>
+  <ul><li>Entity, role, source, count per hour</li><li>Sample keys back to the original rows</li></ul></div>
 
 <div class="box" data-step="6" id="cov" style="left:490px;top:420px;width:400px;height:80px;padding:14px 22px">
   <div class="k" style="margin:0">Daily · notebook 03</div><h2 style="font-size:18px">Coverage and drift check</h2></div>
